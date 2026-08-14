@@ -2,7 +2,7 @@
 
 **Live, on-chain risk intelligence for Stellar/Soroban DeFi.**
 
-[stenion.com](https://stenion.com) · [Methodology](METHODOLOGY.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
+[stenion.vercel.app](https://stenion.vercel.app) · [Methodology](METHODOLOGY.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
 ---
 
