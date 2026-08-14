@@ -73,6 +73,7 @@ export function Nav() {
               className={cn(
                 'relative rounded-md px-3 py-2 transition-colors',
                 isActive(link.href) ? 'text-ink' : 'text-muted hover:text-ink',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
               )}
             >
               {link.label}
@@ -100,7 +101,7 @@ export function Nav() {
           aria-expanded={open}
           aria-controls="mobile-menu"
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink md:hidden"
+          className="ml-auto grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg md:hidden"
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
@@ -140,6 +141,7 @@ export function Nav() {
                       isActive(link.href)
                         ? 'bg-surface-2 text-ink'
                         : 'text-muted hover:bg-surface-2 hover:text-ink',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
                     )}
                   >
                     {link.label}

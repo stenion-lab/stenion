@@ -72,14 +72,14 @@ export default async function HomePage() {
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Link
                 href="/registry"
-                className="group inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-accent to-accent-2 px-5 py-2.5 text-sm font-semibold text-bg transition-transform hover:-translate-y-0.5"
+                className="group inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-accent to-accent-2 px-5 py-2.5 text-sm font-semibold text-bg transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 Explore the registry
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
               <Link
                 href="/methodology"
-                className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface/60 px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-accent/40"
+                className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface/60 px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 Read the methodology
               </Link>
@@ -123,7 +123,7 @@ export default async function HomePage() {
               <RevealItem key={p.id}>
                 <Link
                   href={`/protocol/${p.id}`}
-                  className="group flex items-center gap-5 rounded-xl border border-line surface-lit p-5 transition-all hover:-translate-y-0.5 hover:border-accent/40"
+                  className="group flex items-center gap-5 rounded-xl border border-line surface-lit p-5 transition-all hover:-translate-y-0.5 hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                 >
                   <ScoreRing score={p.safetyScore} size={104} stroke={8} label={null} />
                   <div className="min-w-0">
@@ -208,7 +208,7 @@ export default async function HomePage() {
               </div>
               <Link
                 href="/methodology"
-                className="inline-flex items-center gap-1 text-sm text-accent hover:text-accent-2"
+                className="inline-flex items-center gap-1 text-sm text-accent hover:text-accent-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 Full methodology <ArrowRight className="h-4 w-4" />
               </Link>

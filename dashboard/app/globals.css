@@ -17,7 +17,7 @@
 
   --color-ink: #e9eef7;
   --color-muted: #8b95a9;
-  --color-faint: #5b6577;
+  --color-faint: #6b7b93;  /* bumped for WCAG AA (4.82:1 on bg) */
 
   --color-accent: #3fd0c9; /* custom aqua — not tailwind teal */
   --color-accent-2: #8b8ff5; /* periwinkle */

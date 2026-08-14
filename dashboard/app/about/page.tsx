@@ -71,7 +71,7 @@ export default function AboutPage() {
           Adapters read data directly from Soroban RPC and Horizon — official, trustless Stellar
           infrastructure — so nothing is self-reported by the protocols being scored. The exact
           formulas are public in the{' '}
-          <Link href="/methodology" className="text-accent hover:underline">
+          <Link href="/methodology" className="text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
             methodology
           </Link>
           , and they&apos;re meant to be challenged.
