@@ -70,12 +70,13 @@ export default async function RegistryPage() {
 
 function ProtocolRow({ entry, rank }: { entry: LeaderboardEntry; rank: number }) {
   const band = scoreBand(entry.safetyScore);
-  const pct = entry.safetyScore ?? 0;
+  const hasScore = entry.safetyScore !== null;
+  const pct = hasScore ? entry.safetyScore! : 0;
 
   return (
     <Link
       href={`/protocol/${entry.id}`}
-      className="group grid grid-cols-1 gap-3 px-4 py-5 transition-colors hover:bg-surface/50 md:grid-cols-[3rem_1fr_8rem_10rem_9rem] md:items-center md:gap-4"
+      className="group grid grid-cols-1 gap-3 px-4 py-5 transition-colors hover:bg-surface/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg md:grid-cols-[3rem_1fr_8rem_10rem_9rem] md:items-center md:gap-4"
     >
       <div className="tnum hidden text-sm text-faint md:block">{String(rank).padStart(2, '0')}</div>
 
@@ -95,26 +96,34 @@ function ProtocolRow({ entry, rank }: { entry: LeaderboardEntry; rank: number })
       <div>
         <div className="flex items-baseline gap-2">
           <span className={`tnum text-2xl font-semibold ${bandTextClass(band)}`}>
-            {entry.safetyScore ?? '—'}
+            {hasScore ? entry.safetyScore : '—'}
           </span>
           <span className="text-xs text-faint">/ 100</span>
         </div>
-        <div className="mt-1.5 h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-line-soft">
-          <div
-            className="h-full rounded-full"
-            style={{ width: `${pct}%`, background: bandColor(band) }}
-          />
-        </div>
+        {hasScore ? (
+          <div className="mt-1.5 h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-line-soft">
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${pct}%`, background: bandColor(band) }}
+            />
+          </div>
+        ) : (
+          <div className="mt-1.5 flex items-center gap-1.5 text-xs text-faint">
+            <span className="inline-block h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-line-soft">
+              <span className="block h-full w-full rounded-full bg-line-soft/50" />
+            </span>
+            <span className="shrink-0 italic">Unscored</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
-        <StatusPill lastRunStatus={entry.lastRunStatus} hasScore={entry.safetyScore !== null} />
+        <StatusPill lastRunStatus={entry.lastRunStatus} hasScore={hasScore} />
         <span className="text-xs text-faint md:hidden">{formatTimestamp(entry.lastRunAt)}</span>
       </div>
     </Link>
   );
 }
-
 function EmptyState() {
   return (
     <div className="mt-10 rounded-xl border border-line surface-lit p-10 text-center">
