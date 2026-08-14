@@ -85,6 +85,7 @@ export default async function ProtocolDetailPage({ params }: { params: Promise<{
 }
 
 function Hero({ detail }: { detail: ProtocolDetail }) {
+  const hasScore = detail.safetyScore !== null;
   return (
     <Reveal delay={0.05} className="mt-6">
       <div className="flex flex-col items-start gap-8 rounded-2xl border border-line surface-lit p-8 sm:flex-row sm:items-center">
@@ -108,7 +109,7 @@ function Hero({ detail }: { detail: ProtocolDetail }) {
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <StatusPill
               lastRunStatus={detail.lastRunStatus}
-              hasScore={detail.safetyScore !== null}
+              hasScore={hasScore}
             />
             <span className="text-sm text-muted">
               {detail.computedAt
@@ -119,6 +120,12 @@ function Hero({ detail }: { detail: ProtocolDetail }) {
           <p className="mt-1.5 text-xs text-faint">
             Last run {formatTimestamp(detail.lastRunAt)} · updated on every indexer cycle
           </p>
+          {!hasScore && (
+            <p className="mt-2 text-sm text-faint">
+              This protocol doesn’t have a score yet. Scoring has not succeeded on any run
+              so far — a missing score and a low score are not the same thing.
+            </p>
+          )}
         </div>
       </div>
     </Reveal>
@@ -126,37 +133,44 @@ function Hero({ detail }: { detail: ProtocolDetail }) {
 }
 
 function History({ history }: { history: HistoryEntry[] }) {
-  if (history.length === 0) return null;
   return (
     <section className="mt-14">
       <Reveal>
         <h2 className="font-display text-xl font-semibold text-ink">Recent runs</h2>
         <p className="mt-1 text-sm text-muted">
-          The last {history.length} scoring {history.length === 1 ? 'run' : 'runs'}, newest first.
+          {history.length > 0
+            ? `The last ${history.length} scoring ${history.length === 1 ? 'run' : 'runs'}, newest first.`
+            : 'No scoring runs recorded yet.'}
         </p>
       </Reveal>
-
-      <Reveal delay={0.05} className="mt-5 overflow-hidden rounded-xl border border-line">
-        <ul className="divide-y divide-line-soft">
-          {history.map((h, i) => (
-            <li key={i} className="flex items-center gap-3 bg-surface/40 px-4 py-3 text-sm">
-              <span
-                className={`h-2 w-2 shrink-0 rounded-full ${
-                  h.status === 'ok' ? 'bg-safe' : 'bg-danger'
-                }`}
-              />
-              <span className="tnum w-40 shrink-0 text-muted">{formatTimestamp(h.runAt)}</span>
-              {h.status === 'ok' ? (
-                <span className="text-ink">
-                  scored <span className="tnum font-semibold">{h.safetyScore}</span>
-                </span>
-              ) : (
-                <span className="truncate text-danger">failed — {h.error}</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      </Reveal>
+      {history.length === 0 ? (
+        <Reveal delay={0.05} className="mt-5 rounded-xl border border-dashed border-line bg-surface/30 p-8 text-center text-sm text-faint">
+          The indexer hasn’t run a scoring cycle for this protocol yet. Once a run completes,
+          its result will appear here.
+        </Reveal>
+      ) : (
+        <Reveal delay={0.05} className="mt-5 overflow-hidden rounded-xl border border-line">
+          <ul className="divide-y divide-line-soft">
+            {history.map((h, i) => (
+              <li key={i} className="flex items-center gap-3 bg-surface/40 px-4 py-3 text-sm">
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    h.status === 'ok' ? 'bg-safe' : 'bg-danger'
+                  }`}
+                />
+                <span className="tnum w-40 shrink-0 text-muted">{formatTimestamp(h.runAt)}</span>
+                {h.status === 'ok' ? (
+                  <span className="text-ink">
+                    scored <span className="tnum font-semibold">{h.safetyScore}</span>
+                  </span>
+                ) : (
+                  <span className="truncate text-danger">failed — {h.error}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Reveal>
+      )}
     </section>
   );
 }
