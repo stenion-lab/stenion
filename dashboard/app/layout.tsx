@@ -30,8 +30,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} ${display.variable}`}>
       <body className="min-h-screen bg-bg text-ink antialiased">
+        {/* Screen-reader / keyboard skip link — first focusable element */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-ink focus:ring-2 focus:ring-accent"
+        >
+          Skip to content
+        </a>
         <Nav />
-        <main>{children}</main>
+        <main id="main-content">{children}</main>
         <Footer />
         {/* Vercel Analytics — client component that injects the pageview script.
             Renders no markup, so it sits last and can't affect layout. Pageviews

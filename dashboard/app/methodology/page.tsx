@@ -70,7 +70,7 @@ export default async function MethodologyPage() {
               href={METHODOLOGY_SOURCE_URL}
               target="_blank"
               rel="noreferrer"
-              className="mt-5 inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
+              className="mt-5 inline-flex items-center gap-1.5 text-sm text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               Open METHODOLOGY.md <ExternalLink className="h-3.5 w-3.5" />
             </a>

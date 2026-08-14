@@ -53,10 +53,10 @@ export default async function ProtocolDetailPage({ params }: { params: Promise<{
 
       <Hero detail={detail} />
 
-      <section className="mt-14">
+      <section className="mt-14" role="region" aria-label="Factor breakdown">
         <Reveal>
           <div className="flex items-center gap-2">
-            <Boxes className="h-4 w-4 text-accent" />
+            <Boxes className="h-4 w-4 text-accent" aria-hidden="true" />
             <h2 className="font-display text-xl font-semibold text-ink">Factor breakdown</h2>
           </div>
           <p className="mt-1 text-sm text-muted">
@@ -144,11 +144,12 @@ function History({ history }: { history: HistoryEntry[] }) {
                 className={`h-2 w-2 shrink-0 rounded-full ${
                   h.status === 'ok' ? 'bg-safe' : 'bg-danger'
                 }`}
+                aria-hidden="true"
               />
               <span className="tnum w-40 shrink-0 text-muted">{formatTimestamp(h.runAt)}</span>
               {h.status === 'ok' ? (
                 <span className="text-ink">
-                  scored <span className="tnum font-semibold">{h.safetyScore}</span>
+                  scored <span className="tnum font-semibold" aria-label={`${h.safetyScore} out of 100`}>{h.safetyScore}</span>
                 </span>
               ) : (
                 <span className="truncate text-danger">failed — {h.error}</span>

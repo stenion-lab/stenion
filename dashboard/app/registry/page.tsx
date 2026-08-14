@@ -46,13 +46,14 @@ export default async function RegistryPage() {
         <EmptyState />
       ) : (
         <Reveal delay={0.05} className="mt-10">
+          <div role="table" aria-label="Protocol registry ranked by safety score, higher is safer">
           {/* header row (desktop) */}
-          <div className="hidden grid-cols-[3rem_1fr_8rem_10rem_9rem] gap-4 border-b border-line px-4 pb-3 text-xs uppercase tracking-wider text-faint md:grid">
-            <span>#</span>
-            <span>Protocol</span>
-            <span>Chain</span>
-            <span>Safety score</span>
-            <span>Freshness</span>
+          <div className="hidden grid-cols-[3rem_1fr_8rem_10rem_9rem] gap-4 border-b border-line px-4 pb-3 text-xs uppercase tracking-wider text-faint md:grid" role="row">
+            <span role="columnheader" aria-sort="descending">#</span>
+            <span role="columnheader">Protocol</span>
+            <span role="columnheader">Chain</span>
+            <span role="columnheader">Safety score</span>
+            <span role="columnheader">Freshness</span>
           </div>
 
           <RevealGroup className="divide-y divide-line-soft" stagger={0.05}>
@@ -71,35 +72,41 @@ export default async function RegistryPage() {
 function ProtocolRow({ entry, rank }: { entry: LeaderboardEntry; rank: number }) {
   const band = scoreBand(entry.safetyScore);
   const pct = entry.safetyScore ?? 0;
+  const scoreLabel = entry.safetyScore !== null
+    ? \`Rank \${rank}: \${entry.name} — \${entry.safetyScore} out of 100, higher is safer\`
+    : \`Rank \${rank}: \${entry.name} — not yet scored\`;
 
   return (
     <Link
       href={`/protocol/${entry.id}`}
-      className="group grid grid-cols-1 gap-3 px-4 py-5 transition-colors hover:bg-surface/50 md:grid-cols-[3rem_1fr_8rem_10rem_9rem] md:items-center md:gap-4"
+      role="row"
+      aria-label={scoreLabel}
+      className="group grid grid-cols-1 gap-3 px-4 py-5 transition-colors hover:bg-surface/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg md:grid-cols-[3rem_1fr_8rem_10rem_9rem] md:items-center md:gap-4"
     >
-      <div className="tnum hidden text-sm text-faint md:block">{String(rank).padStart(2, '0')}</div>
+      <div className="tnum hidden text-sm text-faint md:block" role="cell" aria-hidden="true">{String(rank).padStart(2, '0')}</div>
 
-      <div className="flex items-center gap-2">
-        <span className="tnum mr-1 text-sm text-faint md:hidden">
+      <div className="flex items-center gap-2" role="cell">
+        <span className="tnum mr-1 text-sm text-faint md:hidden" aria-hidden="true">
           {String(rank).padStart(2, '0')}
         </span>
         <span className="font-display text-lg font-semibold text-ink">{entry.name}</span>
-        <ArrowUpRight className="h-4 w-4 text-faint transition-colors group-hover:text-accent" />
+        <ArrowUpRight className="h-4 w-4 text-faint transition-colors group-hover:text-accent" aria-hidden="true" />
       </div>
 
-      <div className="text-sm text-muted">
-        <span className="text-xs uppercase tracking-wider text-faint md:hidden">Chain: </span>
+      <div className="text-sm text-muted" role="cell">
+        <span className="text-xs uppercase tracking-wider text-faint md:hidden" aria-hidden="true">Chain: </span>
         {entry.chain}
       </div>
 
-      <div>
+      <div role="cell">
         <div className="flex items-baseline gap-2">
-          <span className={`tnum text-2xl font-semibold ${bandTextClass(band)}`}>
+          <span className={`tnum text-2xl font-semibold ${bandTextClass(band)}`}
+                aria-label={entry.safetyScore !== null ? \`\${entry.safetyScore} out of 100\` : 'Not yet scored'}>
             {entry.safetyScore ?? '—'}
           </span>
-          <span className="text-xs text-faint">/ 100</span>
+          <span className="text-xs text-faint" aria-hidden="true">/ 100</span>
         </div>
-        <div className="mt-1.5 h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-line-soft">
+        <div className="mt-1.5 h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-line-soft" aria-hidden="true">
           <div
             className="h-full rounded-full"
             style={{ width: `${pct}%`, background: bandColor(band) }}
@@ -107,9 +114,9 @@ function ProtocolRow({ entry, rank }: { entry: LeaderboardEntry; rank: number })
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" role="cell">
         <StatusPill lastRunStatus={entry.lastRunStatus} hasScore={entry.safetyScore !== null} />
-        <span className="text-xs text-faint md:hidden">{formatTimestamp(entry.lastRunAt)}</span>
+        <span className="text-xs text-faint md:hidden" aria-hidden="true">{formatTimestamp(entry.lastRunAt)}</span>
       </div>
     </Link>
   );

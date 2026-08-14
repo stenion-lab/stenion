@@ -50,12 +50,19 @@ export function ScoreRing({
     return () => controls.stop();
   }, [target, reduce, score]);
 
+  const scoreLabel =
+    score !== null
+      ? \`\${Math.round(score)} out of 100, higher is safer\`
+      : 'Safety score not yet available';
+
   return (
     <div
       className={cn('relative inline-grid place-items-center', className)}
       style={{ width: size, height: size }}
+      role="img"
+      aria-label={scoreLabel}
     >
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -81,7 +88,7 @@ export function ScoreRing({
           />
         )}
       </svg>
-      <div className="absolute inset-0 grid place-items-center text-center">
+      <div className="absolute inset-0 grid place-items-center text-center" aria-hidden="true">
         <div>
           <div
             className="tnum font-display font-semibold leading-none"
