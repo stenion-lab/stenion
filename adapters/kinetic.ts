@@ -10,14 +10,16 @@ import {
   xdr,
 } from '@stellar/stellar-sdk';
 import { rpc } from '@stellar/stellar-sdk';
-import {
+// Types and values are imported separately — see the note in blend.ts: native
+// type stripping is syntactic, so type-only names left in a value import
+// survive into the running module and fail against core's CommonJS output.
+import { RiskFactorType, freshnessWindow, scoreFactors } from '@stenion/core';
+import type {
   Adapter,
   ProtocolMetadata,
   RiskFactor,
   RiskFactorMap,
-  RiskFactorType,
   RiskScoreResult,
-  freshnessWindow,
 } from '@stenion/core';
 
 // ---------------------------------------------------------------------------
@@ -166,7 +168,7 @@ export interface KineticRawData {
 
 // Shapes as they come back from scValToNative on the corresponding #[contracttype]
 // structs — u32 fields decode to number, i128/u128/u64 to bigint, Address to string.
-interface ReserveConfigurationNative {
+export interface ReserveConfigurationNative {
   data_low: number | bigint;
   data_high: number | bigint;
 }
@@ -508,8 +510,16 @@ function suppliedUsd(r: KineticReserveRaw, priceDecimals: number): number | null
   return supplied * priceFloat;
 }
 
-/** decimals packed in ReserveConfiguration.data_low bits 42-49. */
-function decodeDecimals(cfg: ReserveConfigurationNative): number {
+/**
+ * decimals packed in ReserveConfiguration.data_low bits 42-49.
+ *
+ * Exported for direct testing: this is bit-manipulation whose failure mode is
+ * silent — an off-by-one in the shift or a wrong mask yields a plausible-looking
+ * decimals value, which then scales every supplied/borrowed figure for the
+ * reserve by a power of ten. Live data can't distinguish that from a real
+ * balance change, so it's pinned against known bitmaps instead.
+ */
+export function decodeDecimals(cfg: ReserveConfigurationNative): number {
   return Number((BigInt(cfg.data_low) >> DECIMALS_SHIFT) & DECIMALS_MASK);
 }
 
@@ -776,14 +786,25 @@ export class KineticAdapter implements Adapter<KineticRawData> {
     const weight = 0.15;
     let worstRatio = 1;
     let worstAsset = '';
+    let measured = 0;
     for (const r of raw.reserves) {
       const { supplied, borrowed } = reserveTotals(r);
       if (supplied <= 0) continue;
+      measured++;
       const free = clamp(((supplied - borrowed) / supplied) * 100);
       if (free <= worstRatio * 100) {
         worstRatio = free / 100;
         worstAsset = r.asset;
       }
+    }
+    // METHODOLOGY.md §4 is a minimum over reserves with supplied > 0; over none
+    // it is undefined, not 100. Same rule and same reasoning as Blend.
+    if (measured === 0) {
+      return {
+        value: 0,
+        weight,
+        detail: 'no reserve has any supplied value — free liquidity cannot be assessed',
+      };
     }
     return {
       value: Math.round(worstRatio * 100),
@@ -804,9 +825,11 @@ export class KineticAdapter implements Adapter<KineticRawData> {
     let worst = 100;
     let worstAsset = '';
     let worstUtil = 0;
+    let measured = 0;
     for (const r of raw.reserves) {
       const { supplied, borrowed } = reserveTotals(r);
       if (supplied <= 0) continue;
+      measured++;
       const util = borrowed / supplied;
       const headroom = clamp(((OPTIMAL_UTIL - util) / OPTIMAL_UTIL) * 100);
       if (headroom <= worst) {
@@ -815,6 +838,19 @@ export class KineticAdapter implements Adapter<KineticRawData> {
         worstUtil = util;
       }
     }
+    // Only one "nothing to measure" case here, unlike Blend: K2's cap is the
+    // OPTIMAL_UTILIZATION_RATE constant (0.8), so §5's `cap > 0` filter can
+    // never exclude a reserve. There is deliberately no no-configured-cap branch
+    // — it would be unreachable. If K2 ever exposes a readable per-reserve
+    // optimal-util (see METHODOLOGY.md §5's second caveat), this needs Blend's
+    // two-branch treatment.
+    if (measured === 0) {
+      return {
+        value: 0,
+        weight,
+        detail: 'no reserve has any supplied value — utilization headroom cannot be assessed',
+      };
+    }
     return {
       value: Math.round(worst),
       weight,
@@ -822,18 +858,11 @@ export class KineticAdapter implements Adapter<KineticRawData> {
     };
   }
 
-  // Weighted mean of the factors, renormalizing over whichever are non-null.
-  // Identical to Blend — the shared scoring formula is not per-protocol.
+  // Delegates to the shared rulebook in @stenion/core. The weighted mean is not
+  // per-protocol (METHODOLOGY.md ground rule 1), so it must not be reimplemented
+  // here — this method exists only to satisfy the Adapter interface.
   score(factors: RiskFactorMap): RiskScoreResult {
-    let weighted = 0;
-    let totalWeight = 0;
-    for (const factor of Object.values(factors)) {
-      if (!factor) continue;
-      weighted += factor.value * factor.weight;
-      totalWeight += factor.weight;
-    }
-    const score = totalWeight === 0 ? 0 : Math.round(weighted / totalWeight);
-    return { score, factors, computedAt: new Date() };
+    return scoreFactors(factors);
   }
 }
 

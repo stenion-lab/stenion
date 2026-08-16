@@ -54,11 +54,21 @@ These override any default behavior and are enforced in code and review:
 
 ## Code conventions
 
-- **Package manager: pnpm**, via corepack (version pinned in root `package.json`). pnpm workspaces
-  monorepo — see [`ARCHITECTURE.md`](ARCHITECTURE.md) for the package map.
+- **Package manager: pnpm**, via corepack. The version is pinned by the `packageManager` field in
+  the root `package.json` (currently `pnpm@9.15.9`), and that field is the **only** place it is
+  declared: CI's `pnpm/action-setup` step deliberately passes no `version:` input and reads the same
+  field, so a contributor's local pnpm and CI's cannot diverge. Corepack enforces it — with
+  `corepack enable` done, `pnpm --version` inside this repo reports the pinned version regardless of
+  any globally-installed pnpm. Bump it with `corepack use pnpm@<version>`, and expect a lockfile
+  review. pnpm workspaces monorepo — see [`ARCHITECTURE.md`](ARCHITECTURE.md) for the package map.
 - **TypeScript config split:** `tsconfig.base.json` (shared settings) → `tsconfig.node.json`
   (`nodeNext`, extended by all backend packages) → `dashboard` has its own Next.js config (bundler
-  resolution), which does **not** extend the Node config. Verify with
+  resolution), which does **not** extend the Node config. Plus `tsconfig.check.json` (`noEmit` +
+  `allowImportingTsExtensions`), extended by a backend package's own `tsconfig.json` so that
+  sources **and** `*.test.ts` are typechecked together; emitting moves to a sibling
+  `tsconfig.build.json` that excludes tests. **Keep it that way round:** editors resolve a file
+  through the nearest `tsconfig.json`, so if that config excludes tests they belong to no project
+  and the editor red-underlines every `.ts` import while the CLI stays green. Verify with
   `pnpm -r exec tsc --showConfig` if something looks off (restart the TS server before assuming a
   config bug — editor squiggles can be stale cache).
 - **Error handling:** adapters throw on failure; the indexer wraps each run in try/catch and records

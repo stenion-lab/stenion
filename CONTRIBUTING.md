@@ -86,20 +86,33 @@ Conventions you must not break:
 **How** a factor is computed can differ per protocol; the names, scale, and thresholds do not. New
 factors are added to `@stenion/core` for everyone at once — never invented per-adapter.
 
-`score()` is the same weighted mean for every adapter (copy it from `adapters/blend.ts`):
+**`score()` delegates to `@stenion/core` — do not reimplement the weighted mean.** Your adapter's
+`score()` is one line:
 
 ```ts
+import { scoreFactors } from '@stenion/core';
+
 score(factors: RiskFactorMap): RiskScoreResult {
-  let weighted = 0, totalWeight = 0;
-  for (const factor of Object.values(factors)) {
-    if (!factor) continue;                    // null factors are excluded, weights renormalize
-    weighted += factor.value * factor.weight;
-    totalWeight += factor.weight;
-  }
-  const score = totalWeight === 0 ? 0 : Math.round(weighted / totalWeight);
-  return { score, factors, computedAt: new Date() };
+  return scoreFactors(factors);
 }
 ```
+
+The method exists on the interface only so the indexer can call it; the arithmetic behind it is not
+yours to choose.
+
+**Why it's shared, not copied.** Ground rule 1 in [`METHODOLOGY.md`](METHODOLOGY.md) is that one
+rulebook applies to every protocol — that is the entire basis for claiming two protocols' scores are
+comparable. A per-adapter copy of the weighted mean is a second rulebook waiting to happen: the
+moment one copy is edited and the others aren't, "Blend 53 vs Kinetic 61" stops meaning anything,
+and nothing in review reliably catches a one-line divergence buried in an 800-line adapter. So the
+formula lives in [`core/src/scoring.ts`](core/src/scoring.ts), where changing it changes every
+protocol at once, deliberately and visibly.
+
+That also means **a change to the weighted mean is a methodology change, not an adapter change** —
+it moves every published score, so it needs the `METHODOLOGY.md` edit and probably a
+`METHODOLOGY_VERSION` bump (see [Changing a formula or threshold](#changing-a-formula-or-threshold)).
+If you find yourself wanting different scoring arithmetic for your protocol, that's the conversation
+to open — not something to work around locally.
 
 ## Error handling — throw, don't swallow
 
@@ -132,7 +145,8 @@ mirrors Blend/K2 — is the whole point.
 
 ## Local development setup
 
-**Prerequisites:** Node 20+, pnpm via corepack, and a Postgres database (Neon free tier works).
+**Prerequisites:** Node 22.18+ (24 recommended — see [`.nvmrc`](.nvmrc); the test runner needs
+native TypeScript stripping), pnpm via corepack, and a Postgres database (Neon free tier works).
 
 ```bash
 corepack enable
@@ -178,6 +192,7 @@ pnpm format        # prettier, writes in place — run this first
 pnpm build         # all packages compile
 pnpm lint          # eslint clean
 pnpm typecheck     # tsc clean
+pnpm test          # node --test, all packages — run build first, tests resolve deps via dist/
 ```
 
 **Branch off `dev`, and open your PR against `dev` — not `main`.** `main` is the branch Vercel
@@ -211,6 +226,81 @@ page proves nothing about that path. Fixtures do.
 If you find yourself wanting to assert against live chain data, that's a sign the logic and the I/O
 need separating first — keep the computation pure and pass it data, the way an adapter's
 `computeRiskFactors` is separate from its `fetchRawData`.
+
+**For a new adapter, that separation is exactly what makes it testable.** `computeRiskFactors` takes
+your already-decoded `TRawData`, so you can build that shape by hand and assert the factors it
+produces — no RPC, no mocking of the Stellar SDK. See `adapters/blend.test.ts` and
+`adapters/kinetic.test.ts`: each defines a small `reserve()` / `makeRaw()` builder with sensible
+defaults, and each test overrides only the field it's about. Cover the cases your protocol's live
+state can't currently reach, because those are the ones nobody would otherwise notice breaking —
+for both shipped adapters that's the whole of `oracleSafety`'s failure side.
+
+### Database-backed tests
+
+Most of `@stenion/db` is tested without a database: the row → response mapping is pure and lives in
+`store.test.ts`. The SQL is not — the two LATERAL joins behind the staleness model, the
+`NULLS LAST` ranking, and the `risk_scores_shape` CHECK are Postgres semantics, and an in-memory
+fake would only test a re-implementation of them.
+
+Those live in `store.integration.test.ts` and are **skipped unless `STENION_TEST_DATABASE_URL` is
+set**. CI never sets it, deliberately: a contributor's PR should not need database credentials to go
+green, and a service container plus a secret is real cost for a pre-funding project.
+
+To run them, point at a **scratch** database — they insert and delete rows:
+
+```bash
+docker run -d --name stenion-test-pg -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=stenion_test -p 5433:5432 postgres:16-alpine
+
+DATABASE_URL=postgresql://postgres:test@localhost:5433/stenion_test \
+  pnpm --filter @stenion/db migrate
+
+STENION_TEST_DATABASE_URL=postgresql://postgres:test@localhost:5433/stenion_test \
+  pnpm --filter @stenion/db test
+```
+
+The suite refuses to run if `STENION_TEST_DATABASE_URL` equals `DATABASE_URL`, so it can never
+append test rows to the published history. Everything it creates is prefixed and cleaned up.
+
+### Mainnet snapshot fixtures
+
+Alongside the synthetic tests, `adapters/fixtures/*.ts` holds **frozen captures of real mainnet
+state**, asserted in `adapters/snapshot.test.ts`. They exist because hand-built fixtures use tidy
+numbers and real pools don't: Blend's live reserves carry `b_rate` values like 1.2214, and a bug in
+the fixed-point scaling cancels out entirely when the rate is exactly 1.0. Removing the rate
+multiplication passes every synthetic test and fails only here.
+
+Capture one with:
+
+```bash
+pnpm --filter @stenion/adapters build     # the script reads the built adapter
+pnpm capture:fixture blend                # or: kinetic | all
+pnpm format                               # the generated file is unformatted
+```
+
+This hits live RPC and Horizon, so it is **manual only** — never run by CI, never part of
+`pnpm test`. The committed fixture is then read offline.
+
+**Refresh deliberately, not on a schedule.** Freezing is the point: a fixture that drifts with the
+chain can't detect a regression. Regenerate when a change to the raw shape makes an old capture
+structurally invalid — and the `satisfies BlendRawData` in each fixture will tell you, because a new
+required field makes the stale file stop compiling rather than silently feeding the adapter a shape
+the adapter no longer produces.
+
+After regenerating, **re-derive the expected values in `snapshot.test.ts` by hand.** If a factor
+moved, work out whether the chain moved or your change did, before committing. That re-derivation is
+the review step — a snapshot test whose expected values get updated reflexively is worse than no
+snapshot test, because it looks like coverage.
+
+Two mechanical gotchas, both from Node's type stripping being purely syntactic:
+
+- **Split your imports.** `import type { Adapter, RiskFactorMap } from '@stenion/core'` for types,
+  a plain `import { RiskFactorType, freshnessWindow }` for values. A type name left in a value
+  import survives into the running module and fails against core's CommonJS output. Your adapter
+  won't be importable from a test until this is right — the build won't tell you, since tsc erases
+  the unused names anyway.
+- If you add a package-level test, that package needs the `tsconfig.json` / `tsconfig.build.json`
+  split described in [`ARCHITECTURE.md`](ARCHITECTURE.md#monorepo-layout). Copy `adapters/`.
 
 ## Formatting
 
@@ -269,7 +359,8 @@ Your PR should:
 - Confirm every on-chain method/field name against the protocol's audited source or SDK — say so,
   and link it.
 - Include the live-mainnet verification (what you ran, what the output was, why it's plausible).
-- Pass `pnpm format:check`, `pnpm build`, `pnpm lint`, `pnpm typecheck` from the repo root.
+- Pass `pnpm format:check`, `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` from the repo
+  root. CI runs all five, in that order.
 - Update `METHODOLOGY.md` in the same PR if — and only if — you introduced a per-protocol anchoring
   fact (like K2's `OPTIMAL_UTILIZATION_RATE`).
 

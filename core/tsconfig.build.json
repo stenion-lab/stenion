@@ -1,0 +1,12 @@
+{
+  // The emitting config — what `pnpm --filter @stenion/core build` runs.
+  // Extends the Node config directly (not tsconfig.json, which is noEmit) and
+  // excludes tests, so they're typechecked but never compiled into dist/.
+  "extends": "../tsconfig.node.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

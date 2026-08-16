@@ -5,9 +5,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "migrate": "node dist/migrate.js"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "migrate": "node dist/migrate.js",
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@stenion/core": "workspace:*",

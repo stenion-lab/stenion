@@ -144,6 +144,17 @@ The current version, the exact v1/v2 boundary in stored data, why it changed, an
 doesn't warrant a bump are all at the top of this document — see
 [Current version](#current-version).
 
+#### Corrections that did not bump the version
+
+Fixes where the **implementation disagreed with this document** and the document was right. The
+rulebook did not change, so these are not version boundaries and stored scores remain comparable
+across them — but they are recorded here rather than left silent, because a score did change shape
+even if no published number moved.
+
+| Date (UTC)   | Correction                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `2026-08-16` | `liquiditySafety` (§4) and `utilizationSafety` (§5) returned **100** when no reserve qualified for their minimum, in both adapters. Both are a minimum over a filtered set of reserves; over an empty set that is undefined, not the top of the scale — so an unassessable pool published "maximally safe" from no data, contrary to ground rule 4. Both now return **0**, matching `collateralSafety`'s existing treatment of the same case. **No published score was affected:** the path had never executed, verified across all 1,683 stored rows, none of which carried the empty-reserve signature the defect leaves in a factor's `detail`. |
+
 **History is not backfilled across a version bump, and cannot be.** `risk_scores` stores
 only outputs — the score and the factor map — never the raw on-chain inputs a run was
 computed from, so an old row cannot be recomputed under new rules by us or by anyone. The
@@ -518,6 +529,11 @@ For each reserve with supplied > 0:
 liquiditySafety = min(free) across all such reserves     # worst reserve wins
 ```
 
+Edge case: **no reserve with `supplied > 0` → 0.** A minimum over an empty set is undefined,
+not the top of the scale — an unassessable pool is reported as unassessable, the same way §1
+treats having nothing to price. Returning 100 here would publish "maximally safe" derived from
+no data, which ground rule 4 forbids.
+
 **Why this shape / this anchor:** `(supplied − borrowed) / supplied` is `1 − utilization`,
 i.e. the fraction of supplied value that is actually withdrawable _right now_. That is a
 direct on-chain quantity, not a modeled one — the anchor is the pool's own balances. Taking
@@ -543,6 +559,12 @@ For each reserve with supplied > 0 and cap > 0:
 
 utilizationSafety = min(headroom) across all such reserves    # worst reserve wins
 ```
+
+Edge cases, both → **0**, for the same reason as §4: **no reserve with `supplied > 0`**, and
+**no reserve with `cap > 0`**. The second is the sharper one — reserves can hold real debt while
+declaring no utilization ceiling at all, and grading that as full headroom would measure distance
+to a line nobody set. The two are reported with different `detail` strings, since "the pool is
+empty" and "the pool declares no ceiling" are different findings.
 
 **`cap` is per-protocol — it is always the protocol's own on-chain utilization parameter,
 never a Stenion constant.** Which parameter that resolves to:

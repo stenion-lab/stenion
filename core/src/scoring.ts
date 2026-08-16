@@ -8,6 +8,38 @@
  * stays in the adapters — this file never reaches for chain data.
  */
 
+import type { RiskFactorMap, RiskScoreResult } from './types';
+
+/**
+ * The overall score: a weighted mean of the five factors, renormalized over
+ * whichever are non-null.
+ *
+ * This is METHODOLOGY.md's "Score model" formula and it is emphatically **not**
+ * per-protocol — ground rule 1 is that one rulebook applies to every adapter.
+ * It lives here, and adapters call it, so two protocols cannot drift onto two
+ * different weighted means. Do not reimplement it in an adapter.
+ *
+ * Renormalizing by the *observed* total weight (rather than dividing by a fixed
+ * 1.0) is what makes a null factor genuinely excluded: a protocol for which one
+ * factor doesn't apply is graded on the factors that do apply, instead of being
+ * dragged toward zero by a missing one.
+ *
+ * No non-null factors at all → 0, not NaN: with nothing measured we report the
+ * unsafe end rather than a division by zero, matching how the individual
+ * factors treat "can't assess" (METHODOLOGY.md §1).
+ */
+export function scoreFactors(factors: RiskFactorMap): RiskScoreResult {
+  let weighted = 0;
+  let totalWeight = 0;
+  for (const factor of Object.values(factors)) {
+    if (!factor) continue;
+    weighted += factor.value * factor.weight;
+    totalWeight += factor.weight;
+  }
+  const score = totalWeight === 0 ? 0 : Math.round(weighted / totalWeight);
+  return { score, factors, computedAt: new Date() };
+}
+
 /**
  * Upper bound on the "price is effectively dead" threshold, in seconds.
  *

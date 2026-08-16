@@ -18,13 +18,26 @@ package; the adapters import `@stenion/core`'s `Adapter` interface as a real typ
 /dashboard   — @stenion/dashboard   Next.js site + the deployed API routes + the cron-trigger route
 ```
 
-TypeScript is configured in three layers (see [`CLAUDE.md`](CLAUDE.md) for the rationale):
+TypeScript is configured in four layers (see [`CLAUDE.md`](CLAUDE.md) for the rationale):
 
 - `tsconfig.base.json` — shared compiler settings only (target, strict, etc.).
 - `tsconfig.node.json` — extends base, adds `nodeNext` module/resolution. Backend packages
   (`core`, `db`, `indexer`, `api`, `adapters`) extend this.
+- `tsconfig.check.json` — extends the Node config, adds `noEmit` + `allowImportingTsExtensions`.
+  A backend package's own `tsconfig.json` extends **this**, so its sources and its `*.test.ts` are
+  typechecked as one project; the package emits from a sibling `tsconfig.build.json` that excludes
+  tests. Test files import with explicit `.ts` extensions because Node's runner needs them under
+  type stripping, and tsc only permits that when it isn't emitting — hence the split.
+
+  **The direction matters.** Editors resolve a file through the nearest `tsconfig.json`, so that
+  config is the one that must include the tests. Excluding them there (and typechecking via a
+  separately-named config) leaves test files in no project at all: the CLI passes, because it was
+  pointed at the right file explicitly, while the editor falls back to an inferred project and
+  underlines every `.ts` import. All four backend packages (`core`, `adapters`, `db`, `indexer`)
+  use this split.
+
 - `dashboard` has its own Next.js-generated config (bundler resolution) — it does **not** extend
-  the Node config.
+  the Node config. It needs no split: it's already `noEmit` and sets the flag directly.
 
 ### What each package does
 
@@ -33,6 +46,12 @@ interface (`fetchRawData` → `computeRiskFactors` → `score`), the `RiskFactor
 five-factor `*Safety` taxonomy), and the shared result types. Adding a factor here is a breaking
 change felt by every adapter, so it's deliberately small and stable. Carries
 `ADAPTER_INTERFACE_VERSION` as a seam for future breaking changes.
+
+It also owns the pieces of the rulebook that must not differ between adapters, in
+`core/src/scoring.ts`: `scoreFactors()` (the weighted mean — an adapter's `score()` delegates to it
+and must never reimplement it, or two protocols end up on two rulebooks) and `freshnessWindow()`
+with `STALE_CEILING_SECONDS`. Per-protocol _input reading_ stays in the adapters; nothing in this
+file reaches for chain data.
 
 **`@stenion/adapters`** — one file per protocol, each a class implementing `Adapter`. An adapter
 reads a protocol's on-chain state (Soroban RPC + Horizon), reduces it into the five `*Safety`
@@ -72,6 +91,15 @@ share one typed run loop), wraps each run in try/catch, and writes the outcome �
 or a failed marker — to Postgres. Deliberately dumb: one interval, no retries, no alerting. It
 exports `runIndexerCycle()` (one cycle, used by the cron route) and guards its standalone loop
 behind `require.main === module` so importing it doesn't start the loop.
+
+The package is two modules, split along a line worth preserving. `src/cycle.ts` holds the run loop
+(`runCycle`, `toTarget`) and is a pure function of its arguments — it takes the targets and the
+`Store` to write to, and reaches for no env, no pool, and no config. `src/index.ts` is the process
+entry point: env loading, pool construction, the interval, and the `require.main` guard. The split
+exists because the error model is the part most worth testing and least exercised in production, and
+the entry point cannot be imported from a test at all — its `require.main` guard and extensionless
+relative imports are both CommonJS-only, which Node's ESM type-stripping loader rejects. Keep new
+run-loop logic in `cycle.ts`.
 
 **`@stenion/dashboard`** — a Next.js 15 (App Router) site, and the actual deployment target. It's
 three things in one Vercel project:
@@ -167,12 +195,58 @@ as runtime requires, not webpack-bundled) and pins `outputFileTracingRoot` to th
 workspace-dep tracing is correct. On Vercel: Root Directory = `dashboard`, Build Command =
 `pnpm run build`.
 
-**Tests:** `pnpm test` at the root, fanning out to whichever packages define one. There is **no
-test framework dependency** — tests are `*.test.ts` files run by Node's built-in test runner
-(`node --test`) against Node 24's native TypeScript stripping. Coverage is deliberately narrow:
-pure logic whose important cases live data can't reach. The score-history series builder is the
-current example — as of 2026-08-14 `risk_scores` held 527 rows and not one failed run, so the
-failed-run path had to be proven against fixtures rather than by looking at the page.
+**Tests:** `pnpm test` at the root, fanning out to whichever packages define one, and **run by CI on
+every PR**. There is **no test framework dependency** — tests are `*.test.ts` files run by Node's
+built-in test runner (`node --test`) against native TypeScript stripping, which is why CI and
+`.nvmrc` pin Node 24 (the floor is 22.18). Coverage is deliberately narrow: pure logic whose
+important cases live data can't reach.
+
+Three things follow from strip-only mode and are worth knowing before writing a test:
+
+- A `.ts` test file must import with an explicit `.ts` extension.
+- It **cannot value-import a TypeScript `enum`** from source — `RiskFactorType` included, since
+  Node rejects `enum` as unstrippable syntax. Import the enum's _type_ and use its string values,
+  or import it from a package's built `dist/` (plain JS, so the enum is fine there).
+- **Type-only imports must be written `import type`.** Stripping is syntactic: it cannot tell that
+  `Adapter` is an interface, so a combined `import { Adapter, freshnessWindow }` survives into the
+  running module and fails to resolve against `@stenion/core`'s CommonJS output, which has no
+  runtime `Adapter`. This bites any module a test imports, not just the test file itself.
+
+The worked examples:
+
+- **`core/src/scoring.test.ts`** — `scoreFactors`, the weighted mean every protocol's score passes
+  through. Several assertions parse `METHODOLOGY.md` and the `RiskFactorType` enum as text rather
+  than restating their numbers, so the rule that code and the methodology may not drift is enforced
+  mechanically instead of by review attention.
+- **`adapters/blend.test.ts` / `adapters/kinetic.test.ts`** — `computeRiskFactors` against
+  synthetic raw state. `computeRiskFactors` is a pure function of already-decoded on-chain data, so
+  every methodology rule is reachable without RPC. This is where methodology v2's `oracleSafety` is
+  pinned: both live pools price fresh and bounded, so a live run exercises neither the disabled-bound
+  path nor K2's inert-breaker path — the two the rulebook exists to catch.
+- **`adapters/snapshot.test.ts`** — the same adapters against **frozen mainnet captures** in
+  `adapters/fixtures/`. This asks a different question from the synthetic suites: not "does the code
+  match the rulebook" but "did a refactor move a published number on real data". It is the only
+  coverage that would notice a decode or fixed-point scaling regression, because the synthetic
+  builders use convenient values (`b_rate` = 1.0, one decimals value, round balances) and real pools
+  do not — dropping the `b_rate` multiplication entirely is an exact identity under a unit rate and
+  passes all 71 synthetic tests, while failing here.
+- **`db/src/store.test.ts`** — the row → response mapping (`toHistoryEntry`, `toProtocolDetail`,
+  `toLeaderboardEntry`), extracted from the query methods so the public JSON contract can be tested
+  without Postgres. Covers the `ok`/`failed` union and the staleness model — neither of which the
+  live site exercises, since no run has ever failed.
+- **`db/src/store.integration.test.ts`** — the SQL itself (the two LATERAL joins, `NULLS LAST`
+  ranking, the shape CHECK). **Skipped unless `STENION_TEST_DATABASE_URL` is set**, so CI and
+  contributor PRs never need database credentials. See CONTRIBUTING.md.
+- **`dashboard/app/api/_http.test.ts`** — the response envelope: status, content type, and CORS.
+  These fail only in a third party's browser, never on our own pages (which read the Store
+  in-process), so nothing else would catch a regression.
+- **`indexer/src/cycle.test.ts`** — the run loop's error model, against a deliberately throwing
+  adapter and an in-memory `Store`. The contract is that an adapter throws, the indexer records a
+  failed run and continues; as of 2026-08-16 `risk_scores` held 1,683 rows and **zero** failed ones,
+  so nothing about this path is evidenced by it having run in production.
+- **`dashboard/app/lib/score-series.test.ts`** — the score-history series builder. As of
+  2026-08-14 `risk_scores` held 527 rows and not one failed run, so the failed-run path had to be
+  proven against fixtures rather than by looking at the page.
 
 **Environment variables** (all on the one Vercel project, Production + Preview): `DATABASE_URL`
 (Neon pooled), `STENION_RPC_URL`, `STENION_HORIZON_URL`, `CRON_SECRET`. Locally, every package

@@ -1,11 +1,16 @@
 {
   "name": "stenion",
   "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "smoke:protocol-404": "node scripts/smoke-protocol-404.mjs",
+    "capture:fixture": "node scripts/capture-fixture.mjs",
     "build": "pnpm -r --if-present run build",
     "test": "pnpm -r --if-present run test",
     "typecheck": "pnpm -r --if-present run typecheck"

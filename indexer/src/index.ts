@@ -1,4 +1,4 @@
-// Minimal indexer — build-order step 5.
+// Minimal indexer
 //
 // Runs each adapter on a fixed interval, wraps every run in try/catch, and
 // writes the outcome to Postgres (via @stenion/db): safetyScore + factors +
@@ -15,103 +15,18 @@
 // caught and logged so it can't kill the loop.
 
 import { BlendAdapter, KineticAdapter } from '@stenion/adapters';
-import { METHODOLOGY_VERSION } from '@stenion/core';
-import type { Adapter, ProtocolMetadata, RiskFactorMap } from '@stenion/core';
-import { closePool, createStore, getPool, type RunRecord, type Store } from '@stenion/db';
+import { closePool, createStore, getPool, type Store } from '@stenion/db';
 
 import { ConfigError, loadConfig, type IndexerConfig } from './config';
+import { runCycle, toTarget, type IndexTarget } from './cycle';
 
-/**
- * An adapter bound to its run pipeline. Wrapping each adapter this way keeps
- * its TRawData type internal (an `Adapter<BlendRawData>` is not assignable to
- * `Adapter<unknown>` because computeRiskFactors is contravariant in TRawData),
- * so a heterogeneous list of adapters can share one run loop. `adapterRef` is
- * the concrete adapter class name, persisted as the protocol's adapter column.
- */
-interface IndexTarget {
-  metadata: ProtocolMetadata;
-  adapterRef: string;
-  run(): Promise<{ safetyScore: number; factors: RiskFactorMap; computedAt: Date }>;
-}
-
-function toTarget<T>(adapter: Adapter<T>): IndexTarget {
-  return {
-    metadata: adapter.metadata,
-    adapterRef: adapter.constructor.name,
-    run: async () => {
-      const raw = await adapter.fetchRawData();
-      const factors = await adapter.computeRiskFactors(raw);
-      const result = adapter.score(factors);
-      return { safetyScore: result.score, factors: result.factors, computedAt: result.computedAt };
-    },
-  };
-}
-
-/** One protocol's outcome in a cycle summary. */
-export interface CycleRunResult {
-  id: string;
-  status: 'ok' | 'failed';
-  safetyScore?: number;
-  error?: string;
-}
-
-/** What one cycle did — returned so the cron route can respond with a summary. */
-export interface CycleSummary {
-  ran: number;
-  ok: number;
-  failed: number;
-  results: CycleRunResult[];
-}
-
-async function runCycle(targets: IndexTarget[], store: Store): Promise<CycleSummary> {
-  const results: CycleRunResult[] = [];
-
-  for (const target of targets) {
-    const runAt = new Date().toISOString();
-
-    // Build the run outcome first (adapter errors caught here), then persist it
-    // separately so a DB write failure is logged without aborting the cycle.
-    let record: RunRecord;
-    let result: CycleRunResult;
-    try {
-      const { safetyScore, factors, computedAt } = await target.run();
-      record = {
-        protocolId: target.metadata.id,
-        status: 'ok',
-        safetyScore,
-        factors,
-        // Stamped here, not by the adapter: one rulebook applies to every
-        // protocol, so the version is a property of the run, not of the adapter.
-        methodologyVersion: METHODOLOGY_VERSION,
-        computedAt: computedAt.toISOString(),
-        runAt,
-      };
-      result = { id: target.metadata.id, status: 'ok', safetyScore };
-      console.log(`[${runAt}] ${target.metadata.id}: safetyScore=${safetyScore}`);
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      record = { protocolId: target.metadata.id, status: 'failed', error, runAt };
-      result = { id: target.metadata.id, status: 'failed', error };
-      console.error(`[${runAt}] ${target.metadata.id}: FAILED — ${error}`);
-    }
-
-    try {
-      await store.insertRunRecord(record);
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      console.error(`[${runAt}] ${target.metadata.id}: DB write failed — ${error}`);
-    }
-
-    results.push(result);
-  }
-
-  return {
-    ran: results.length,
-    ok: results.filter((r) => r.status === 'ok').length,
-    failed: results.filter((r) => r.status === 'failed').length,
-    results,
-  };
-}
+// The run loop itself lives in ./cycle so it can be tested without this file's
+// CLI concerns (the require.main guard below is CommonJS-only). Re-exported here
+// because @stenion/indexer's entry point is this module — the package's public
+// surface is unchanged.
+export { runCycle, toTarget } from './cycle';
+export type { CycleRunResult, CycleSummary, IndexTarget } from './cycle';
+import type { CycleSummary } from './cycle';
 
 function buildTargets(config: IndexerConfig): IndexTarget[] {
   // poolId is deliberately not configured here — it's a Blend constant the

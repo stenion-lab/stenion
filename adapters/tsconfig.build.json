@@ -1,0 +1,11 @@
+{
+  // The emitting config. Excludes tests so they're typechecked but never
+  // compiled into dist/.
+  "extends": "../tsconfig.node.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": ["*.ts"],
+  "exclude": ["dist", "node_modules", "*.test.ts"]
+}

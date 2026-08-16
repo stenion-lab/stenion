@@ -117,6 +117,118 @@ function toNumber(value: string | null): number | null {
   return value === null ? null : Number(value);
 }
 
+// ---------------------------------------------------------------------------
+// Row → response mapping
+//
+// Split out of the query methods and exported so the *shape* of the public API
+// can be tested without a database. The SQL decides which rows come back and in
+// what order; these decide what they look like on the wire — the discriminated
+// union, the numeric/timestamp coercions, and the staleness fields. That second
+// half is the part external consumers actually depend on.
+// ---------------------------------------------------------------------------
+
+/** A `risk_scores` row as pg returns it. */
+export interface HistoryRow {
+  status: 'ok' | 'failed';
+  safety_score: string | null;
+  error: string | null;
+  computed_at: Date | null;
+  run_at: Date;
+  methodology_version: number | null;
+}
+
+/**
+ * One history row → one `HistoryEntry`.
+ *
+ * The `ok` and `failed` arms carry disjoint fields on purpose: a failed run has
+ * no score, and must never be representable as one (a zero here would render as
+ * a real, very bad score rather than as "unknown"). The non-null assertions on
+ * the ok arm are backed by the `risk_scores_shape` CHECK constraint.
+ */
+export function toHistoryEntry(row: HistoryRow): HistoryEntry {
+  return row.status === 'ok'
+    ? {
+        status: 'ok',
+        // non-null on ok rows by the risk_scores_shape CHECK
+        safetyScore: toNumber(row.safety_score) as number,
+        // non-null on ok rows by risk_scores_methodology_version_shape
+        methodologyVersion: row.methodology_version as number,
+        computedAt: toIso(row.computed_at) as string,
+        runAt: row.run_at.toISOString(),
+      }
+    : {
+        status: 'failed',
+        error: row.error as string,
+        runAt: row.run_at.toISOString(),
+      };
+}
+
+/** A `protocols` row joined with its latest-ok score and newest run, as pg returns it. */
+export interface ProtocolDetailRow {
+  id: string;
+  name: string;
+  chain: string;
+  adapter: string;
+  safety_score: string | null;
+  computed_at: Date | null;
+  factors: RiskFactorMap | null;
+  methodology_version: number | null;
+  last_run_at: Date | null;
+  last_run_status: 'ok' | 'failed' | null;
+}
+
+/**
+ * Detail row + history rows → the `GET /api/v1/protocol/:id` body.
+ *
+ * The staleness model lives here: `safetyScore`/`computedAt`/`factors` describe
+ * the latest **ok** run and are null when a protocol has never scored, while
+ * `lastRunAt`/`lastRunStatus` describe the newest run of **any** status. They
+ * come from two separate LATERAL joins precisely so a failed cycle leaves the
+ * last good score visible and flags it as stale, rather than blanking the entry.
+ */
+export function toProtocolDetail(
+  row: ProtocolDetailRow,
+  historyRows: HistoryRow[],
+): ProtocolDetail {
+  return {
+    id: row.id,
+    name: row.name,
+    chain: row.chain,
+    adapter: row.adapter,
+    safetyScore: toNumber(row.safety_score),
+    computedAt: toIso(row.computed_at),
+    factors: row.factors,
+    methodologyVersion: row.methodology_version,
+    lastRunAt: toIso(row.last_run_at),
+    lastRunStatus: row.last_run_status,
+    history: historyRows.map(toHistoryEntry),
+  };
+}
+
+/** A `protocols` row joined with its latest-ok score, as pg returns it. */
+export interface LeaderboardRow {
+  id: string;
+  name: string;
+  chain: string;
+  safety_score: string | null;
+  computed_at: Date | null;
+  last_run_at: Date | null;
+  last_run_status: 'ok' | 'failed' | null;
+}
+
+/** One leaderboard row → one `LeaderboardEntry`. Ranking is the SQL's job, not this. */
+export function toLeaderboardEntry(row: LeaderboardRow): LeaderboardEntry {
+  return {
+    id: row.id,
+    name: row.name,
+    chain: row.chain,
+    safetyScore: toNumber(row.safety_score),
+    computedAt: toIso(row.computed_at),
+    lastRunAt: toIso(row.last_run_at),
+    lastRunStatus: row.last_run_status,
+  };
+}
+
 export function createStore(pool: Pool): Store {
   return {
     async upsertProtocol(metadata, adapterRef) {
@@ -163,15 +275,7 @@ export function createStore(pool: Pool): Store {
       // (protocol_id, run_at DESC): `ok` is the latest successful score shown on
       // the board, `latest` is the newest run of any status for the staleness
       // flag. Rank by score desc, never-scored protocols (null score) last.
-      const { rows } = await pool.query<{
-        id: string;
-        name: string;
-        chain: string;
-        safety_score: string | null;
-        computed_at: Date | null;
-        last_run_at: Date | null;
-        last_run_status: 'ok' | 'failed' | null;
-      }>(
+      const { rows } = await pool.query<LeaderboardRow>(
         `SELECT p.id, p.name, p.chain,
                 ok.safety_score, ok.computed_at,
                 latest.run_at AS last_run_at, latest.status AS last_run_status
@@ -193,32 +297,13 @@ export function createStore(pool: Pool): Store {
           ORDER BY ok.safety_score DESC NULLS LAST, p.id`,
       );
 
-      return rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        chain: r.chain,
-        safetyScore: toNumber(r.safety_score),
-        computedAt: toIso(r.computed_at),
-        lastRunAt: toIso(r.last_run_at),
-        lastRunStatus: r.last_run_status,
-      }));
+      return rows.map(toLeaderboardEntry);
     },
 
     async getProtocolDetail(id) {
       // Protocol row + latest-ok score/factors + newest-run staleness fields, in
       // one query. No row → unknown id → null (the API turns this into a 404).
-      const { rows } = await pool.query<{
-        id: string;
-        name: string;
-        chain: string;
-        adapter: string;
-        safety_score: string | null;
-        computed_at: Date | null;
-        factors: RiskFactorMap | null;
-        methodology_version: number | null;
-        last_run_at: Date | null;
-        last_run_status: 'ok' | 'failed' | null;
-      }>(
+      const { rows } = await pool.query<ProtocolDetailRow>(
         `SELECT p.id, p.name, p.chain, p.adapter,
                 ok.safety_score, ok.computed_at, ok.factors, ok.methodology_version,
                 latest.run_at AS last_run_at, latest.status AS last_run_status
@@ -244,14 +329,7 @@ export function createStore(pool: Pool): Store {
       const row = rows[0];
       if (!row) return null;
 
-      const { rows: historyRows } = await pool.query<{
-        status: 'ok' | 'failed';
-        safety_score: string | null;
-        error: string | null;
-        computed_at: Date | null;
-        run_at: Date;
-        methodology_version: number | null;
-      }>(
+      const { rows: historyRows } = await pool.query<HistoryRow>(
         `SELECT status, safety_score, error, computed_at, run_at, methodology_version
            FROM risk_scores
           WHERE protocol_id = $1
@@ -260,37 +338,7 @@ export function createStore(pool: Pool): Store {
         [id, DETAIL_HISTORY_LIMIT],
       );
 
-      const history: HistoryEntry[] = historyRows.map((h) =>
-        h.status === 'ok'
-          ? {
-              status: 'ok',
-              // non-null on ok rows by the risk_scores_shape CHECK
-              safetyScore: toNumber(h.safety_score) as number,
-              // non-null on ok rows by risk_scores_methodology_version_shape
-              methodologyVersion: h.methodology_version as number,
-              computedAt: toIso(h.computed_at) as string,
-              runAt: h.run_at.toISOString(),
-            }
-          : {
-              status: 'failed',
-              error: h.error as string,
-              runAt: h.run_at.toISOString(),
-            },
-      );
-
-      return {
-        id: row.id,
-        name: row.name,
-        chain: row.chain,
-        adapter: row.adapter,
-        safetyScore: toNumber(row.safety_score),
-        computedAt: toIso(row.computed_at),
-        factors: row.factors,
-        methodologyVersion: row.methodology_version,
-        lastRunAt: toIso(row.last_run_at),
-        lastRunStatus: row.last_run_status,
-        history,
-      };
+      return toProtocolDetail(row, historyRows);
     },
   };
 }

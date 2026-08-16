@@ -1,9 +1,8 @@
 {
-  "extends": "../tsconfig.node.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "."
-  },
+  // Sources + tests, no emit — what editors resolve files through.
+  // See ../tsconfig.check.json for why this, and not the build config, is the
+  // one named tsconfig.json. Emitting to dist/ is tsconfig.build.json.
+  "extends": "../tsconfig.check.json",
   "include": ["*.ts"],
   "exclude": ["dist", "node_modules"]
 }

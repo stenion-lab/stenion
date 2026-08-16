@@ -1,0 +1,22 @@
+{
+  // Typechecking config for the backend packages — what `pnpm typecheck` runs
+  // and, more importantly, what editors pick up.
+  //
+  // This covers a package's sources AND its *.test.ts. Test files import with
+  // an explicit .ts extension because Node's built-in runner requires it under
+  // native type stripping (see CONTRIBUTING.md "Tests"), and tsc only permits
+  // that with `allowImportingTsExtensions`, which in turn requires `noEmit`.
+  //
+  // That's why emitting lives in a separate tsconfig.build.json per package
+  // rather than the other way around: an editor resolves a file through the
+  // nearest *tsconfig.json*, so that file has to be the one that includes the
+  // tests. Excluding them there leaves test files in no project at all, and the
+  // editor falls back to an inferred project that red-underlines every .ts
+  // import — while the CLI passes, because it was pointed at the right config
+  // explicitly. Keep the permissive superset as tsconfig.json.
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  }
+}
