@@ -2,11 +2,13 @@
 @plugin '@tailwindcss/typography';
 
 /*
-  Stenion design tokens — dark-mode ONLY (no toggle, no light theme yet).
-  Deep navy surfaces + off-white ink, with a deliberately non-default accent
-  pair: cool aqua (`accent`) against a soft periwinkle (`accent-2`) for gradient
-  wordmarks/headings. The score scale (safe/warn/danger) is a separate semantic
-  ramp — it encodes data, not brand, so it must never be reused as decoration.
+  Stenion design tokens — dark mode by default; a light-mode palette is layered
+  on via data-theme="light" on <html> (see the :root[data-theme='light'] block
+  below). The light palette is the existing design expressed in a second
+  palette, not a redesign: same hierarchy, same accent pair, same safe/warn/
+  danger score ramp, just inverted surfaces and re-tuned contrast. All colors
+  flow through CSS custom properties, so components need zero changes to work
+  in both modes.
 */
 @theme {
   --color-bg: #06090f;
@@ -31,6 +33,35 @@
   --font-display: var(--font-display), var(--font-geist-sans), sans-serif;
 
   --radius-xl: 1rem;
+}
+
+/*
+  Light-mode token overrides. WCAG AA (4.5:1 for normal text) was verified for
+  every foreground/background pair in use:
+  - ink #0b1220 on bg #f7f8fa — 17.6:1
+  - muted #3f4a5c on bg/surface — 8.4:1
+  - faint #5f6a7c on bg — 5.2:1
+  - accent #0c7a72 on bg — 4.9:1 (links/headings)
+  - accent-2 #4f46e5 on bg — 5.9:1
+  - safe/warn/danger on bg — 5.0:1 / 4.7:1 / 5.9:1
+*/
+:root[data-theme='light'] {
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef1f5;
+  --color-line: #d9dfe8;
+  --color-line-soft: #e6eaf0;
+
+  --color-ink: #0b1220;
+  --color-muted: #3f4a5c;
+  --color-faint: #5f6a7c;
+
+  --color-accent: #0c7a72;   /* darkened aqua for AA on light bg */
+  --color-accent-2: #4f46e5; /* periwinkle darkened for AA on light bg */
+
+  --color-safe: #0e7a55;
+  --color-warn: #b45309;
+  --color-danger: #be123c;
 }
 
 html {
@@ -58,12 +89,22 @@ body {
     var(--color-surface);
 }
 
+:root[data-theme='light'] .surface-lit {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0) 40%),
+    var(--color-surface);
+}
+
 /* Faint dotted grid for hero backdrops. */
 .grid-backdrop {
   background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
   background-size: 26px 26px;
   -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 40%, transparent 100%);
   mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 40%, transparent 100%);
+}
+
+:root[data-theme='light'] .grid-backdrop {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px);
 }
 
 /* Shimmer for skeleton loaders. */
@@ -79,6 +120,10 @@ body {
   transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
   animation: shimmer 1.6s infinite;
+}
+
+:root[data-theme='light'] .shimmer::after {
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.05), transparent);
 }
 
 /* Prose (methodology page) tuned to the dark palette instead of prose-invert's

@@ -7,6 +7,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Github, Menu, Radar, X } from 'lucide-react';
 import { cn } from '../app/lib/cn';
 import { GITHUB_URL, NAV_LINKS } from '../app/lib/site';
+import { ThemeToggle } from './theme-toggle';
 
 // Same expo-out ease the rest of the site uses (see reveal.tsx) — subtle, not bouncy.
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -81,12 +82,13 @@ export function Nav() {
               )}
             </Link>
           ))}
+          <ThemeToggle />
           <a
             href={GITHUB_URL}
             target="_blank"
             rel="noreferrer"
             aria-label="Stenion on GitHub"
-            className="ml-1 grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            className="grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             <Github className="h-4 w-4" />
           </a>
@@ -145,6 +147,10 @@ export function Nav() {
                     {link.label}
                   </Link>
                 ))}
+                <div className="flex items-center justify-between rounded-md px-3 py-3 text-muted">
+                  <span className="text-xs">Appearance</span>
+                  <ThemeToggle />
+                </div>
                 <a
                   href={GITHUB_URL}
                   target="_blank"

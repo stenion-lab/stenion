@@ -26,9 +26,39 @@ export const metadata: Metadata = {
     'Continuous, on-chain-derived safety scores for Stellar/Soroban DeFi protocols. Audits are a snapshot; Stenion tracks risk as it moves.',
 };
 
+/**
+ * Runs before first paint to set the resolved theme on <html data-theme=...>,
+ * so there is no flash of the wrong theme on load. Explicit user choice wins;
+ * otherwise the system preference decides; otherwise dark (the default).
+ */
+const themeScript = `
+  (function () {
+    try {
+      var choice = localStorage.getItem('stenion-theme');
+      if (choice === 'light' || choice === 'dark') {
+        document.documentElement.setAttribute('data-theme', choice);
+      } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} ${display.variable}`}>
+    <html
+      lang="en"
+      data-theme="dark"
+      className={`${GeistSans.variable} ${GeistMono.variable} ${display.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="min-h-screen bg-bg text-ink antialiased">
         <Nav />
         <main>{children}</main>
