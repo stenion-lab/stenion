@@ -214,7 +214,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
 (GitHub's blame view applies [`.git-blame-ignore-revs`](.git-blame-ignore-revs) automatically; this
-is only needed for local blame. Formatting workflow is in [`CONTRIBUTING.md`](CONTRIBUTING.md#formatting).)
+is only needed for local blame. Formatting and commit workflow is in [`CONTRIBUTING.md`](CONTRIBUTING.md#formatting).)
 
 ## Contributing an adapter
 
