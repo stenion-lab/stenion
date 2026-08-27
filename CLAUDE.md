@@ -179,7 +179,12 @@ These override any default behavior and are enforced in code and review:
 One Vercel project = the `dashboard`. A page that renders a repo-root markdown file (`/methodology`
 → `METHODOLOGY.md`, `/docs/api` → `API.md`) **must** have an `outputFileTracingIncludes` entry in
 `next.config.mjs` — the file is outside the dashboard dir, and without it the route works in
-`next dev` and fails only in production. The API lives as Next.js Route Handlers
+`next dev` and fails only in production. **`@stellar/stellar-sdk` must never be added to
+`serverExternalPackages`** — externalizing it makes the bundler emit a native `require()` into the
+SDK's CJS build, which requires ESM-only `@noble/hashes`, so the cron route throws
+`ERR_REQUIRE_ESM` at import time on any runtime without `require(esm)` and the indexer stops
+silently (`lastRunStatus` stays `ok`, `staleMinutes` climbs). It must stay **bundled**; full
+incident and the verification recipe are in `ARCHITECTURE.md`. The API lives as Next.js Route Handlers
 (`/api/v1/protocols`, `/api/v1/coverage`, `/api/v1/protocol/[id]`, `/api/v1/health` — versioned;
 there are **no**
 unversioned paths, the
