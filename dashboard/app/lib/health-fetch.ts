@@ -52,8 +52,7 @@ export const HEALTH_BODY_STATUSES: readonly number[] = [200, 503];
 
 /** What the page should do with a response. */
 export type HealthFetchResult =
-  | { kind: 'data'; body: HealthResponse }
-  | { kind: 'error'; message: string };
+  { kind: 'data'; body: HealthResponse } | { kind: 'error'; message: string };
 
 function isRunStatus(value: unknown): value is 'ok' | 'failed' | null {
   return value === 'ok' || value === 'failed' || value === null;
