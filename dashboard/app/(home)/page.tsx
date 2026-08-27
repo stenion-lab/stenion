@@ -70,14 +70,17 @@ export default async function HomePage() {
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Link
                 href="/registry"
-                className="group inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-bg transition-transform hover:-translate-y-0.5"
+                className="group inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-bg transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 Explore the registry
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                <ArrowRight
+                  className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+                  aria-hidden="true"
+                />
               </Link>
               <Link
                 href="/methodology"
-                className="inline-flex items-center gap-2 rounded-lg border border-line-strong px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-accent"
+                className="inline-flex items-center gap-2 rounded-lg border border-line-strong px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 Read the methodology
               </Link>
@@ -100,9 +103,9 @@ export default async function HomePage() {
             </div>
             <Link
               href="/registry"
-              className="hidden shrink-0 items-center gap-1 text-sm text-accent-ink transition-colors hover:text-ink sm:inline-flex"
+              className="hidden shrink-0 items-center gap-1 text-sm text-accent-ink transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm sm:inline-flex"
             >
-              All protocols <ArrowRight className="h-4 w-4" />
+              All protocols <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
           </div>
         </Reveal>
@@ -110,7 +113,10 @@ export default async function HomePage() {
         {scored.length === 0 ? (
           <div className="mt-6 rounded-xl border border-line bg-surface p-6 text-sm text-muted">
             Live scores are warming up — the indexer hasn&apos;t published a run yet.{' '}
-            <Link href="/registry" className="text-accent-ink hover:underline">
+            <Link
+              href="/registry"
+              className="text-accent-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+            >
               Open the registry
             </Link>{' '}
             to check again.
@@ -277,18 +283,19 @@ export default async function HomePage() {
                 Ranked purely by safety score. Free, public, payment-blind.
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <Link
                 href="/registry"
-                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-bg transition-transform hover:-translate-y-0.5"
+                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-bg transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
-                Open the registry <ArrowRight className="h-4 w-4" />
+                Open the registry <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <a
                 href={GITHUB_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-lg border border-line-strong px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-accent"
+                aria-label="Contribute an adapter on GitHub (opens in a new tab)"
+                className="inline-flex items-center gap-2 rounded-lg border border-line-strong px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 Contribute an adapter
               </a>

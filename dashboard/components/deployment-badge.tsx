@@ -52,6 +52,7 @@ export function DeploymentBadge({ deployedOn, className }: DeploymentBadgeProps)
       // title spells out the relationship for anyone who hovers, without
       // spending a second line of the row on it.
       title={`Not an independent protocol — this entry is a ${deployedOn.label}, running ${deployedOn.host}'s contracts.`}
+      aria-label={`Deployment: ${deployedOn.label}, running on ${deployedOn.host}'s contracts`}
     >
       <Layers className="h-3 w-3 shrink-0" aria-hidden="true" />
       {deployedOn.label}

@@ -32,13 +32,18 @@ export function FactorCard({
 
   if (factor === null) {
     return (
-      <div className="surface-lit h-full rounded-xl border border-line-soft p-5">
+      <article
+        className="surface-lit h-full rounded-xl border border-line-soft p-5"
+        aria-label={`${label}: Not applicable to this protocol`}
+      >
         <div className="flex items-baseline justify-between gap-4">
           <span className="font-medium text-ink">{label}</span>
-          <span className="tnum text-sm text-faint">N/A</span>
+          <span className="tnum text-sm text-faint" aria-label="Not applicable">
+            N/A
+          </span>
         </div>
         <p className="mt-3 text-sm italic text-faint">Not applicable to this protocol.</p>
-      </div>
+      </article>
     );
   }
 
@@ -46,7 +51,10 @@ export function FactorCard({
   const pct = Math.max(0, Math.min(100, factor.value));
 
   return (
-    <div className="surface-lit h-full rounded-xl border border-line p-5 transition-colors hover:border-line/80">
+    <article
+      className="surface-lit h-full rounded-xl border border-line p-5 transition-colors hover:border-line/80"
+      aria-label={`${label} factor: score ${factor.value} out of 100, weight ${Math.round(factor.weight * 100)}%`}
+    >
       <div className="flex items-baseline justify-between gap-4">
         <span className="font-medium text-ink">
           {label}
@@ -54,12 +62,23 @@ export function FactorCard({
             weight {Math.round(factor.weight * 100)}%
           </span>
         </span>
-        <span className={`score-num text-lg font-semibold ${bandTextClass(band)}`}>
+        <span
+          className={`score-num text-lg font-semibold ${bandTextClass(band)}`}
+          aria-label={`Score ${factor.value} out of 100`}
+        >
           {factor.value}
         </span>
       </div>
 
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-line-soft">
+      <div
+        className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-line-soft"
+        role="progressbar"
+        aria-label={`${label} safety score`}
+        aria-valuenow={factor.value}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={`${factor.value} out of 100`}
+      >
         <motion.div
           className="h-full rounded-full"
           style={{ background: bandColor(band) }}
@@ -78,7 +97,7 @@ export function FactorCard({
       {factor.components && factor.components.length > 0 && (
         <FactorComponents components={factor.components} featured={featured} />
       )}
-    </div>
+    </article>
   );
 }
 
@@ -140,12 +159,16 @@ function ComponentRow({ component: c }: { component: RiskFactorComponent }) {
         {c.value === null ? (
           // A null component is a deliberate disclosure, not missing data —
           // say so rather than rendering a bare dash the reader must guess at.
-          <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-faint">
+          <span
+            className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-faint"
+            aria-label={`${c.label}: not scored disclosure`}
+          >
             not scored
           </span>
         ) : (
           <span
             className={`score-num shrink-0 text-sm font-semibold ${bandTextClass(scoreBand(c.value))}`}
+            aria-label={`${c.label} sub-score: ${c.value} out of 100`}
           >
             {c.value}
           </span>

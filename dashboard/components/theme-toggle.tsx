@@ -253,7 +253,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             setOpen(true);
           }
         }}
-        className="grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        className="grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <ResolvedIcon className="h-4 w-4" strokeWidth={2} />
       </button>
@@ -279,11 +279,11 @@ export function ThemeToggle({ className }: { className?: string }) {
                 onClick={(e) => select(value, e)}
                 onKeyDown={(e) => onItemKeyDown(e, i)}
                 className={cn(
-                  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+                  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                   selected ? 'text-ink' : 'text-muted hover:bg-surface-2 hover:text-ink',
                 )}
               >
-                <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                <Icon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
                 <span className="flex-1">{label}</span>
                 {value === 'system' && (
                   <span className="text-xs text-faint">{systemIsDark ? 'Dark' : 'Light'}</span>
@@ -291,6 +291,7 @@ export function ThemeToggle({ className }: { className?: string }) {
                 <Check
                   className={cn('h-3.5 w-3.5 shrink-0 text-accent', !selected && 'invisible')}
                   strokeWidth={2.5}
+                  aria-hidden="true"
                 />
               </button>
             );

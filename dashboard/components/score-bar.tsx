@@ -38,7 +38,10 @@ export function ScoreBar({
   const band = scoreBand(score);
 
   return (
-    <div className={`h-1.5 w-full overflow-hidden rounded-full bg-line-soft ${className ?? ''}`}>
+    <div
+      aria-hidden="true"
+      className={`h-1.5 w-full overflow-hidden rounded-full bg-line-soft ${className ?? ''}`}
+    >
       {score !== null && (
         <motion.div
           className="h-full rounded-full"

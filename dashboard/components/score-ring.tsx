@@ -86,8 +86,18 @@ export function ScoreRing({
       style={{ width: size, height: size }}
       viewport={VIEWPORT}
       onViewportEnter={() => setSeen(true)}
+      role="meter"
+      aria-label={
+        score === null
+          ? 'Safety score: not yet scored'
+          : `Safety score: ${score} out of 100 (${band} band). Scale 0 to 100, higher is safer.`
+      }
+      aria-valuenow={score ?? undefined}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuetext={score === null ? 'Not scored' : `${score} out of 100`}
     >
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -117,7 +127,7 @@ export function ScoreRing({
           />
         )}
       </svg>
-      <div className="absolute inset-0 grid place-items-center text-center">
+      <div className="absolute inset-0 grid place-items-center text-center" aria-hidden="true">
         <div>
           <div
             className="score-num font-semibold leading-none"

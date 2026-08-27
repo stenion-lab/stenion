@@ -71,8 +71,8 @@ export function CodeBlock({ raw, children }: { raw: string; children: React.Reac
         // Always visible rather than hover-only: half this page's readers are on a
         // phone, where there is no hover and a hidden affordance is no affordance.
         // Opaque background because the block scrolls horizontally underneath it.
-        className="cursor-pointer absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2 py-1.5 text-xs font-medium text-muted outline-none transition-colors hover:border-accent hover:text-ink focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent/60"
-        aria-label={copied ? 'Copied to clipboard' : 'Copy code to clipboard'}
+        className="cursor-pointer absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+        aria-label={copied ? 'Copied code to clipboard' : 'Copy code to clipboard'}
       >
         {copied ? (
           <Check className="h-3.5 w-3.5 text-safe" aria-hidden />

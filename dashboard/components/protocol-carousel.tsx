@@ -333,6 +333,7 @@ function CarouselCard({
     <div className="w-[300px] shrink-0 pr-4 sm:w-[316px]">
       <Link
         href={`/protocol/${p.id}`}
+        aria-label={`${p.name}, Chain: ${p.chain}, Safety score: ${p.safetyScore ?? 'unscored'} out of 100`}
         style={{ '--sheen-delay': `${sheenDelay}s` } as React.CSSProperties}
         tabIndex={duplicate ? -1 : undefined}
         // `h-full` on a flex item in a stretch row: every card takes the height
@@ -340,7 +341,7 @@ function CarouselCard({
         // rather than standing proud of its neighbours.
         className={cn(
           'border-sheen group flex h-full flex-col rounded-xl border border-line surface-lit p-5',
-          'transition-all hover:-translate-y-0.5 hover:border-accent',
+          'transition-all hover:-translate-y-0.5 hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
         )}
       >
         <div className="flex items-center gap-4">

@@ -60,6 +60,7 @@ export interface ProtocolLogoProps {
 export function ProtocolLogo({ name, logo, size = 40, className }: ProtocolLogoProps) {
   return (
     <div
+      aria-hidden="true"
       className={cn('shrink-0 overflow-hidden rounded-xl', className)}
       // Fixed dimensions in inline style, and matching width/height on the <img>
       // below, so the box occupies its final size on first paint. A slow or

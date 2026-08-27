@@ -88,9 +88,9 @@ export default async function CoveragePage({ params }: { params: Promise<{ id: s
       <Reveal>
         <Link
           href="/registry"
-          className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
+          className="inline-flex items-center gap-1.5 rounded-md text-sm text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
-          <ArrowLeft className="h-4 w-4" /> Registry
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Registry
         </Link>
       </Reveal>
 
@@ -301,11 +301,11 @@ function OutboundLink({
       href={href}
       target="_blank"
       rel="noopener noreferrer nofollow"
-      aria-label={label}
+      aria-label={`${label} (opens in a new tab)`}
       title={title}
-      className="group inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-muted transition-colors hover:border-accent hover:text-ink"
+      className="group inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-muted transition-colors hover:border-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
     >
-      {icon}
+      <span aria-hidden="true">{icon}</span>
       <span className={mono ? 'adapter-prose font-mono text-xs' : ''}>{value}</span>
     </a>
   );

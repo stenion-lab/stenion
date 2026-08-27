@@ -43,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       suppressHydrationWarning
+      data-scroll-behavior="smooth"
       className={`${GeistSans.variable} ${GeistMono.variable} ${display.variable}`}
     >
       <body className="min-h-screen bg-bg text-ink antialiased">
@@ -56,8 +57,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             already in <head>, and a synchronous inline script blocks parsing,
             so the attribute is set before any body content is laid out. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-bg focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+        >
+          Skip to main content
+        </a>
         <Nav />
-        <main>{children}</main>
+        <main id="main-content">{children}</main>
         <Footer />
         {/* Vercel Analytics — client component that injects the pageview script.
             Renders no markup, so it sits last and can't affect layout. Pageviews

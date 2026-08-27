@@ -69,9 +69,9 @@ export default async function ProtocolDetailPage({ params }: { params: Promise<{
       <Reveal>
         <Link
           href="/registry"
-          className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
+          className="inline-flex items-center gap-1.5 rounded-md text-sm text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
-          <ArrowLeft className="h-4 w-4" /> Registry
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Registry
         </Link>
       </Reveal>
 
@@ -416,15 +416,15 @@ function RefLink({
       target="_blank"
       // See ExternalRefs for why nofollow is here and not just noopener/noreferrer.
       rel="noopener noreferrer nofollow"
-      aria-label={label}
+      aria-label={`${label} (opens in a new tab)`}
       title={title}
-      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg ${
         primary
           ? 'border-accent/40 bg-accent/5 text-ink hover:border-accent'
           : 'border-line text-muted hover:border-accent hover:text-ink'
       }`}
     >
-      {icon}
+      <span aria-hidden="true">{icon}</span>
       <span className={primary ? 'font-mono text-xs' : ''}>{value}</span>
     </a>
   );
@@ -439,7 +439,7 @@ function ScoreHistory({ history }: { history: HistoryEntry[] }) {
     <section className="mt-14">
       <Reveal>
         <div className="flex items-center gap-2">
-          <ActivitySquare className="h-4 w-4 text-accent" />
+          <ActivitySquare className="h-4 w-4 text-accent" aria-hidden="true" />
           <h2 className="font-display text-xl font-semibold text-ink">Score history</h2>
         </div>
         <p className="mt-1 text-sm text-muted">
@@ -480,9 +480,17 @@ function History({ history }: { history: HistoryEntry[] }) {
               older.methodologyVersion < h.methodologyVersion;
 
             return (
-              <li key={i}>
+              <li
+                key={i}
+                aria-label={`Run on ${formatTimestamp(h.runAt)}: ${
+                  h.status === 'ok'
+                    ? `scored ${h.safetyScore} out of 100`
+                    : `failed with error ${h.error}`
+                }`}
+              >
                 <div className="flex items-center gap-3 bg-surface/40 px-4 py-3 text-sm">
                   <span
+                    aria-hidden="true"
                     className={`h-2 w-2 shrink-0 rounded-full ${
                       h.status === 'ok' ? 'bg-safe' : 'bg-danger'
                     }`}
@@ -506,7 +514,10 @@ function History({ history }: { history: HistoryEntry[] }) {
                     Scoring rules changed here, so scores above and below this line are not
                     comparable. Earlier runs cannot be recomputed — only scores are stored, not the
                     on-chain inputs behind them.{' '}
-                    <Link href="/methodology" className="underline hover:text-ink">
+                    <Link
+                      href="/methodology"
+                      className="underline hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+                    >
                       What changed
                     </Link>
                   </div>

@@ -31,17 +31,22 @@ export function StatusPill({
         freshnessPillClass(tone),
         className,
       )}
+      aria-label={`Freshness status: ${label}`}
     >
       {tone === 'live' && (
-        <span className="relative flex h-1.5 w-1.5">
+        <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
           {/* The ping is the one piece of motion here; a reader who asked for
               none gets the same dot, static, rather than a different layout. */}
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-safe opacity-60 motion-reduce:animate-none" />
           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-safe" />
         </span>
       )}
-      {tone === 'stale' && <RefreshCwOff className="h-3.5 w-3.5" strokeWidth={2} />}
-      {tone === 'unscored' && <CircleSlash className="h-3.5 w-3.5" strokeWidth={2} />}
+      {tone === 'stale' && (
+        <RefreshCwOff className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+      )}
+      {tone === 'unscored' && (
+        <CircleSlash className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+      )}
       {label}
     </span>
   );

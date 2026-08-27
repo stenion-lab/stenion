@@ -56,9 +56,12 @@ export function Nav() {
   return (
     <header className="sticky top-0 z-50 border-b border-line/70 bg-bg/70 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-5">
-        <Link href="/" className="group flex items-center gap-2">
+        <Link
+          href="/"
+          className="group flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent/15 ring-1 ring-inset ring-accent/30">
-            <Radar className="h-4 w-4 text-accent" strokeWidth={2} />
+            <Radar className="h-4 w-4 text-accent" strokeWidth={2} aria-hidden="true" />
           </span>
           <span className="font-display text-lg font-semibold tracking-tight text-ink">
             Stenion
@@ -66,13 +69,16 @@ export function Nav() {
         </Link>
 
         {/* Desktop nav — unchanged layout, just hidden below md. */}
-        <nav className="ml-auto hidden items-center gap-1 text-sm md:flex">
+        <nav
+          aria-label="Main navigation"
+          className="ml-auto hidden items-center gap-1 text-sm md:flex"
+        >
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                'relative rounded-md px-3 py-2 transition-colors',
+                'relative rounded-md px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                 isActive(link.href) ? 'text-ink' : 'text-muted hover:text-ink',
               )}
             >
@@ -86,10 +92,10 @@ export function Nav() {
             href={GITHUB_URL}
             target="_blank"
             rel="noreferrer"
-            aria-label="Stenion on GitHub"
-            className="ml-1 grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            aria-label="Stenion on GitHub (opens in a new tab)"
+            className="ml-1 grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <Github className="h-4 w-4" />
+            <Github className="h-4 w-4" aria-hidden="true" />
           </a>
           <ThemeToggle />
         </nav>
@@ -98,13 +104,17 @@ export function Nav() {
         <button
           ref={triggerRef}
           type="button"
-          aria-label={open ? 'Close menu' : 'Open menu'}
+          aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
           aria-expanded={open}
           aria-controls="mobile-menu"
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink md:hidden"
+          className="ml-auto grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:hidden"
         >
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {open ? (
+            <X className="h-5 w-5" aria-hidden="true" />
+          ) : (
+            <Menu className="h-5 w-5" aria-hidden="true" />
+          )}
         </button>
       </div>
 
@@ -124,6 +134,7 @@ export function Nav() {
             />
             <motion.nav
               id="mobile-menu"
+              aria-label="Mobile navigation"
               className="fixed inset-x-0 top-16 z-50 border-b border-line/70 bg-surface/95 backdrop-blur-xl"
               initial={{ opacity: 0, y: reduceMotion ? 0 : -8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -138,7 +149,7 @@ export function Nav() {
                     ref={i === 0 ? firstLinkRef : undefined}
                     onClick={() => setOpen(false)}
                     className={cn(
-                      'rounded-md px-3 py-3 transition-colors',
+                      'rounded-md px-3 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                       isActive(link.href)
                         ? 'bg-surface-2 text-ink'
                         : 'text-muted hover:bg-surface-2 hover:text-ink',
@@ -164,11 +175,11 @@ export function Nav() {
                     href={GITHUB_URL}
                     target="_blank"
                     rel="noreferrer"
-                    aria-label="Stenion on GitHub"
+                    aria-label="Stenion on GitHub (opens in a new tab)"
                     onClick={() => setOpen(false)}
-                    className="grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+                    className="grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
-                    <Github className="h-4 w-4" />
+                    <Github className="h-4 w-4" aria-hidden="true" />
                   </a>
                   <ThemeToggle />
                 </div>

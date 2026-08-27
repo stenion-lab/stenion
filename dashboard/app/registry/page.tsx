@@ -272,7 +272,11 @@ function ResultSummary({
   if (coverage > 0) parts.push(`${coverage} assessed, not scored`);
 
   return (
-    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-faint">
+    <p
+      aria-live="polite"
+      aria-atomic="true"
+      className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-faint"
+    >
       <span className="tnum">{parts.join(' · ') || 'No entries'}</span>
       {params.q !== '' && (
         <span>
@@ -282,7 +286,7 @@ function ResultSummary({
       {filtering && (
         <Link
           href="/registry"
-          className="font-medium text-accent-ink underline-offset-4 hover:underline"
+          className="font-medium text-accent-ink underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
         >
           Clear
         </Link>
@@ -499,7 +503,7 @@ function CoverageRow({ entry, chip }: { entry: CoverageEntry; chip: string }) {
     <Link
       id={`not-scored-${entry.id}`}
       href={`/coverage/${entry.id}`}
-      className="group grid scroll-mt-24 grid-cols-1 gap-2 px-4 py-4 transition-colors hover:bg-surface/50 md:grid-cols-[1fr_14rem] md:items-center md:gap-4"
+      className="group grid scroll-mt-24 grid-cols-1 gap-2 rounded-xl px-4 py-4 transition-colors hover:bg-surface/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg md:grid-cols-[1fr_14rem] md:items-center md:gap-4"
     >
       <div className="flex min-w-0 items-start gap-3">
         {/* Same tile as a scored row. The point of listing these is that they
@@ -510,7 +514,10 @@ function CoverageRow({ entry, chip }: { entry: CoverageEntry; chip: string }) {
         <span className="min-w-0">
           <span className="flex items-center gap-2">
             <span className="font-display text-base font-semibold text-ink">{entry.name}</span>
-            <ArrowUpRight className="h-3.5 w-3.5 text-faint transition duration-200 ease-out group-hover:text-accent-ink motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
+            <ArrowUpRight
+              className="h-3.5 w-3.5 text-faint transition duration-200 ease-out group-hover:text-accent-ink motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5"
+              aria-hidden="true"
+            />
           </span>
           {/* Server-rendered, always open, never behind a disclosure: this
               sentence is what find-in-page and a search engine index, and it is
@@ -529,7 +536,10 @@ function CoverageRow({ entry, chip }: { entry: CoverageEntry; chip: string }) {
         <CoverageChip chip={chip} />
         <span className="inline-flex items-center gap-1 text-xs font-medium text-faint transition-colors group-hover:text-accent-ink">
           Why we don&rsquo;t score it
-          <ArrowRight className="h-3 w-3 transition-transform motion-safe:group-hover:translate-x-0.5" />
+          <ArrowRight
+            className="h-3 w-3 transition-transform motion-safe:group-hover:translate-x-0.5"
+            aria-hidden="true"
+          />
         </span>
       </div>
     </Link>
@@ -631,7 +641,7 @@ function MergedCoverageRow({ entry }: { entry: CoverageEntry }) {
       id={`not-scored-${entry.id}`}
       href={`/coverage/${entry.id}`}
       className={cn(
-        'group grid scroll-mt-24 grid-cols-1 gap-3 px-4 py-5 transition-colors hover:bg-surface/50 md:items-center md:gap-4',
+        'group grid scroll-mt-24 grid-cols-1 gap-3 rounded-xl px-4 py-5 transition-colors hover:bg-surface/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg md:items-center md:gap-4',
         GRID_UNRANKED,
       )}
     >
@@ -640,7 +650,10 @@ function MergedCoverageRow({ entry }: { entry: CoverageEntry }) {
         <span className="flex min-w-0 flex-col items-start">
           <span className="flex items-center gap-2">
             <span className="font-display text-lg font-semibold text-ink">{entry.name}</span>
-            <ArrowUpRight className="h-4 w-4 text-faint transition duration-200 ease-out group-hover:text-accent-ink motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
+            <ArrowUpRight
+              className="h-4 w-4 text-faint transition duration-200 ease-out group-hover:text-accent-ink motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5"
+              aria-hidden="true"
+            />
           </span>
           <span className="adapter-prose mt-1 block text-sm leading-relaxed text-muted">
             {entry.summary}
@@ -662,7 +675,10 @@ function MergedCoverageRow({ entry }: { entry: CoverageEntry }) {
         Coverage note · not a score
         <span className="mt-1 flex items-center gap-1 font-medium transition-colors group-hover:text-accent-ink">
           Why we don&rsquo;t score it
-          <ArrowRight className="h-3 w-3 transition-transform motion-safe:group-hover:translate-x-0.5" />
+          <ArrowRight
+            className="h-3 w-3 transition-transform motion-safe:group-hover:translate-x-0.5"
+            aria-hidden="true"
+          />
         </span>
       </div>
     </Link>
@@ -690,21 +706,26 @@ function ProtocolRow({
   return (
     <Link
       href={`/protocol/${entry.id}`}
+      aria-label={
+        rank !== null
+          ? `Rank ${rank}: ${entry.name}, Chain: ${entry.chain}, Safety score: ${entry.safetyScore ?? 'unscored'} out of 100`
+          : `${entry.name}, Chain: ${entry.chain}, Safety score: ${entry.safetyScore ?? 'unscored'} out of 100`
+      }
       className={cn(
-        'group grid grid-cols-1 gap-3 px-4 py-5 transition-colors hover:bg-surface/50 md:items-center md:gap-4',
+        'group grid grid-cols-1 gap-3 rounded-xl px-4 py-5 transition-colors hover:bg-surface/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg md:items-center md:gap-4',
         rank === null ? GRID_UNRANKED : GRID_RANKED,
         stale && 'bg-accent/5 shadow-[inset_3px_0_0_0_var(--color-accent)] hover:bg-accent/9',
       )}
     >
       {rank !== null && (
-        <div className="tnum hidden text-sm text-faint md:block">
+        <div className="tnum hidden text-sm text-faint md:block" aria-hidden="true">
           {String(rank).padStart(2, '0')}
         </div>
       )}
 
       <div className="flex items-center gap-2">
         {rank !== null && (
-          <span className="tnum mr-1 text-sm text-faint md:hidden">
+          <span className="tnum mr-1 text-sm text-faint md:hidden" aria-hidden="true">
             {String(rank).padStart(2, '0')}
           </span>
         )}
@@ -727,7 +748,10 @@ function ProtocolRow({
         <span className="flex min-w-0 flex-col items-start">
           <span className="flex items-center gap-2">
             <span className="font-display text-lg font-semibold text-ink">{entry.name}</span>
-            <ArrowUpRight className="h-4 w-4 text-faint transition duration-200 ease-out group-hover:text-accent-ink motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
+            <ArrowUpRight
+              className="h-4 w-4 text-faint transition duration-200 ease-out group-hover:text-accent-ink motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5"
+              aria-hidden="true"
+            />
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5">
             <DeploymentBadge deployedOn={entry.deployedOn} />
@@ -744,12 +768,20 @@ function ProtocolRow({
         {entry.chain}
       </div>
 
-      <div>
+      <div
+        aria-label={
+          entry.safetyScore !== null
+            ? `Safety score: ${entry.safetyScore} out of 100`
+            : 'Safety score unavailable'
+        }
+      >
         <div className="flex items-baseline gap-2">
           <span className={`score-num text-2xl font-semibold ${bandTextClass(band)}`}>
             {entry.safetyScore ?? '—'}
           </span>
-          <span className="text-xs text-faint">/ 100</span>
+          <span className="text-xs text-faint" aria-hidden="true">
+            / 100
+          </span>
         </div>
         {/* The bar now fills on arrival, staggered down the list. It is the one
             element on the row that shows the score as a position on a scale

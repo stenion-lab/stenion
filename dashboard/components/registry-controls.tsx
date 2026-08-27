@@ -163,7 +163,7 @@ export function RegistryControls({
           // `search` inputs render a native clear affordance in some browsers;
           // the button below is the one that also clears the URL, so both being
           // present is deliberate rather than redundant.
-          className="w-full rounded-lg border border-line bg-surface py-2.5 pl-9 pr-9 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-full rounded-lg border border-line bg-surface py-2.5 pl-9 pr-9 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         />
         {q !== '' && (
           <button
@@ -173,9 +173,9 @@ export function RegistryControls({
               go({ q: '' });
             }}
             aria-label="Clear search"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-faint transition-colors hover:text-ink"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         )}
       </div>
@@ -242,7 +242,7 @@ export function RegistryControls({
       <noscript>
         <button
           type="submit"
-          className="rounded-lg border border-line px-4 py-2.5 text-sm font-medium text-ink"
+          className="rounded-lg border border-line px-4 py-2.5 text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           Search
         </button>
@@ -274,9 +274,10 @@ function Select({
       <select
         id={id}
         name={name}
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent sm:w-auto"
+        className="w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:w-auto"
       >
         {children}
       </select>

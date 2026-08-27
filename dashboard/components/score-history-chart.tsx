@@ -136,7 +136,7 @@ export function ScoreHistoryChart({ history }: { history: HistoryEntry[] }) {
           }
         }}
         onBlur={() => setActive(null)}
-        className="relative rounded-xl border border-line surface-lit p-2 outline-none focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent/60"
+        className="relative rounded-xl border border-line surface-lit p-2 outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       >
         <svg
           ref={svgRef}

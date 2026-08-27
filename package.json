@@ -1,7 +1,7 @@
 {
   "name": "stenion",
   "private": true,
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@11.24.0",
   "engines": {
     "node": ">=22.18"
   },

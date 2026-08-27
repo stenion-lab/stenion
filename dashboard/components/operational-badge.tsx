@@ -64,6 +64,7 @@ export function OperationalBadge({ operationalState, className }: OperationalBad
       // reading and the plain-language consequence, so hovering answers "says
       // who?" without spending another line of the row.
       title={`${operationalState.detail} (read from ${operationalState.source}). Not scored — see the methodology.`}
+      aria-label={`Operational status: ${operationalLabel(operationalState.level)}. ${operationalState.detail}`}
     >
       <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
       {operationalLabel(operationalState.level)}
