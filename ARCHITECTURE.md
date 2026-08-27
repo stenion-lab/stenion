@@ -599,10 +599,29 @@ separate services. Everything runs from the single Next.js app:
 
 **Build wiring:** the dashboard's `build` script compiles the workspace deps (`core` → `db` →
 `adapters` → `indexer`) before `next build`, because those packages resolve via their `dist/`
-output. `next.config.mjs` marks `pg` and `@stellar/stellar-sdk` as `serverExternalPackages` (kept
-as runtime requires, not webpack-bundled) and pins `outputFileTracingRoot` to the repo root so
-workspace-dep tracing is correct. On Vercel: Root Directory = `dashboard`, Build Command =
-`pnpm run build`.
+output. `next.config.mjs` marks `pg` as a `serverExternalPackage` (kept as a
+runtime require, not bundled) and pins `outputFileTracingRoot` to the repo root so workspace-dep
+tracing is correct. On Vercel: Root Directory = `dashboard`, Build Command = `pnpm run build`.
+
+> **`@stellar/stellar-sdk` must NOT be a `serverExternalPackage`** — it was, and that is what took
+> the indexer down on the Next 15 → 16 upgrade (#96). `@stenion/adapters` compiles to CommonJS, so
+> it reaches the SDK through the `require` condition (`lib/cjs/*`), and the SDK's CJS build does
+> `require('@noble/hashes/sha2.js')` — ESM-only since noble v2. That require works **only** on a
+> runtime with `require(esm)` (Node >= 22.12 / >= 20.19); anywhere else it throws `ERR_REQUIRE_ESM`
+> at **import time**, so the route 500s before the handler runs. Nothing is recorded as a failed
+> run, because the indexer never gets to run — `lastRunStatus` stays `ok` on the last good cycle
+> while `staleMinutes` climbs, so **`/v1/health` is the alarm, not the API's error rate**.
+>
+> Next 15 used webpack, which **bundled** the SDK and resolved that CJS→ESM edge at build time, so
+> the deployed Node version never mattered. Next 16 uses Turbopack, which honours the list and
+> emits a native `require()`. The stack trace points at Turbopack's `externalRequire`, but the
+> bundler is only the messenger — the version of `@noble/hashes` had not changed in 17 days.
+>
+> Bundling it is Node-version-independent, which is why it is the fix rather than raising the
+> runtime. Verify a change here by loading the **production build** with
+> `--no-experimental-require-module` (simulates a pre-22.12 runtime) and POSTing the cron route:
+> external ⇒ empty-body 500, bundled ⇒ 401 on a bad secret and a real cycle on a good one. `next
+dev` and a plain `next start` on a current Node pass either way — they are not a test of this.
 
 The workspace packages themselves are **not** externalised — they are bundled into the serverless
 functions, and therefore **minified**, which renames classes and functions. Nothing that is

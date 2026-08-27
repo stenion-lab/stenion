@@ -588,6 +588,19 @@ any ESLint rule that would have an opinion about formatting, so the two can neve
 Editor setup is optional but recommended — install your editor's Prettier plugin and enable
 format-on-save, and `pnpm format` becomes a no-op you never think about.
 
+## Commits
+
+Stenion follows the [Conventional Commits](https://www.conventionalcommits.org/) specification (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, etc.) for all commit messages.
+
+An optional commit helper ([`git-aic`](https://github.com/Spectra010s/git-aic)) is configured in the repository. To generate conventional commit messages from your staged changes:
+
+```bash
+git add <files...>
+pnpm commit
+```
+
+You can also write conventional commits manually using standard `git commit -m "type(scope): description"`.
+
 ## Adding a dependency
 
 This project defaults to **no new dependencies unless there's a real reason** (it's solo and
