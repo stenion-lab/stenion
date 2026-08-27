@@ -18,13 +18,15 @@
     "format:check": "prettier --check .",
     "smoke:protocol-404": "node scripts/smoke-protocol-404.mjs",
     "smoke:alert-webhook": "node scripts/smoke-alert-webhook.mjs",
-    "capture:fixture": "node scripts/capture-fixture.mjs"
+    "capture:fixture": "node scripts/capture-fixture.mjs",
+    "commit": "git-aic"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
     "@types/node": "^24.13.3",
     "eslint": "^9.9.0",
     "eslint-config-prettier": "^10.1.8",
+    "git-aic": "1.4.1",
     "prettier": "^3.9.6",
     "turbo": "^2.10.12",
     "typescript": "^5.5.4",
