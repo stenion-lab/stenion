@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Github } from 'lucide-react';
 import { GITHUB_URL, NAV_LINKS } from '../app/lib/site';
+import { FooterStatusPill } from './footer-status-pill';
 
 export function Footer() {
   return (
@@ -56,6 +57,7 @@ export function Footer() {
                 className="text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
               >
                 Status
+                <FooterStatusPill />
               </Link>
             </nav>
           </div>

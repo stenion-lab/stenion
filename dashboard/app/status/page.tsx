@@ -3,29 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ExternalLink, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { interpretHealthResponse } from '../lib/health-fetch';
+import type { HealthProtocol, HealthResponse, HealthStatus } from '../lib/health-fetch';
 
 // ---------------------------------------------------------------------------
-// Types — mirrors the HealthBody shape from api/_health, declared locally so
-// this client component never imports a server-only module. The API route
-// returns this exact JSON.
-// ---------------------------------------------------------------------------
-
-type HealthStatus = 'healthy' | 'degraded' | 'down';
-
-interface HealthProtocol {
-  id: string;
-  lastSuccessfulRunAt: string | null;
-  lastRunAt: string | null;
-  lastRunStatus: 'ok' | 'failed' | null;
-  staleMinutes: number | null;
-}
-
-interface HealthResponse {
-  status: HealthStatus;
-  thresholdMinutes: number;
-  protocols: HealthProtocol[];
-}
-
+// Types and response handling live in ../lib/health-fetch — a leaf module with
+// no imports, so the interpretation of a response is unit-tested rather than
+// only reachable through a rendered page. See its header for why `res.ok` is
+// the wrong question to ask this endpoint.
+//
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -133,16 +119,24 @@ export default function StatusPage() {
   const fetchHealth = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
     try {
-      const res = await fetch('/api/v1/health');
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+      // NOT `if (!res.ok) throw`. `degraded` and `down` are served as 503 WITH a
+      // full body, so branching on res.ok would discard the body in exactly the
+      // two states this page exists to display. interpretHealthResponse decides
+      // from the status line whether a body is expected and from the shape
+      // whether one arrived; see ../lib/health-fetch.
+      const res = await fetch('/api/v1/health', { cache: 'no-store' });
+      const payload: unknown = await res.json().catch(() => null);
+      const result = interpretHealthResponse(res.status, payload);
+
+      if (result.kind === 'error') {
+        setError(result.message);
+      } else {
+        setData(result.body);
+        setError(null);
+        setLastChecked(new Date());
       }
-      const body: HealthResponse = await res.json();
-      setData(body);
-      setError(null);
-      setLastChecked(new Date());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch health data');
+      setError(err instanceof Error ? err.message : 'Failed to reach the health endpoint');
     } finally {
       setLoading(false);
       if (isManual) setRefreshing(false);
@@ -255,6 +249,17 @@ export default function StatusPage() {
           Staleness threshold: {data.thresholdMinutes} minutes
         </p>
       </div>
+
+      {/* A refresh that failed while a previous body is still on screen. Shown
+          rather than swallowed: everything below is from the last successful
+          check, and the timestamps keep ageing whether or not we say so. */}
+      {error && (
+        <div className="mt-4 rounded-xl border border-line-strong bg-surface-2 p-4">
+          <p className="text-sm text-muted">
+            Last refresh failed: {error} Figures below are from the last successful check.
+          </p>
+        </div>
+      )}
 
       {/* ---- Per-protocol cards ---- */}
       <h2 className="mt-12 font-display text-xl font-semibold text-ink">Per-protocol freshness</h2>
