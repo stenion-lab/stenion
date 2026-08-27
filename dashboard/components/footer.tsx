@@ -40,6 +40,9 @@ export function Footer() {
               <Link href="/docs/api" className="text-muted hover:text-ink">
                 API docs
               </Link>
+              <Link href="/status" className="text-muted hover:text-ink">
+                Status
+              </Link>
             </nav>
           </div>
         </div>

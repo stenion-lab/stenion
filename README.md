@@ -174,6 +174,11 @@ defaults to 30 (six missed cycles at the ~5-minute indexer cadence) and is confi
 `STENION_HEALTH_STALE_MINUTES`. Full reasoning for both thresholds is in
 [`ARCHITECTURE.md`](ARCHITECTURE.md#the-health-endpoint).
 
+There is also a human-readable **[/status](https://stenion.vercel.app/status)** page on the site
+that fetches this endpoint and renders the overall state prominently, plus per-protocol freshness
+cards showing last-successful-run time, staleness, and last-run status. It auto-refreshes every 30
+seconds — the same data, for a browser instead of `curl`.
+
 To smoke-test the deployed 404 behaviour for an unknown protocol id, run:
 
 ```bash

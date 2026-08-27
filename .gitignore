@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.turbo/
 *.tsbuildinfo
 # Next.js (dashboard) build output
 .next/
