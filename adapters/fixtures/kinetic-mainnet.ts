@@ -27,7 +27,7 @@
 // `satisfies` is load-bearing: if KineticRawData gains a required field, this file
 // stops compiling rather than quietly feeding the adapter a stale shape.
 
-import type { KineticRawData } from '../kinetic.ts';
+import type { KineticRawData } from '../kinetic/index.ts';
 
 export const kineticMainnet = {
   routerId: 'CCTUJZLYFAW7ZNQD2SXMUZIHBUUJJICYRKWLZJ6SK6TGNAWNXOJIV6J7',

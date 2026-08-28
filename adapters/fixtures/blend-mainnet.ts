@@ -10,7 +10,7 @@
 // `satisfies` is load-bearing: if BlendRawData gains a required field, this file
 // stops compiling rather than quietly feeding the adapter a stale shape.
 
-import type { BlendRawData } from '../blend.ts';
+import type { BlendRawData } from '../blend/index.ts';
 
 export const blendMainnet = {
   poolId: 'CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD',

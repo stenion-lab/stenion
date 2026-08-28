@@ -1,8 +1,11 @@
 // Single source of truth for outbound/site-level constants so they're changed
 // in one place.
+import { API_PARTS, METHODOLOGY_PARTS } from './doc-parts.mjs';
 export const GITHUB_URL = 'https://github.com/stenion-lab/stenion';
-export const METHODOLOGY_SOURCE_URL = `${GITHUB_URL}/blob/main/METHODOLOGY.md`;
-export const API_DOCS_SOURCE_URL = `${GITHUB_URL}/blob/main/API.md`;
+// `/tree/` not `/blob/`: both docs are folders of per-topic files now, and a
+// blob URL for a directory 404s on GitHub.
+export const METHODOLOGY_SOURCE_URL = `${GITHUB_URL}/tree/main/methodology`;
+export const API_DOCS_SOURCE_URL = `${GITHUB_URL}/tree/main/api-docs`;
 
 /**
  * Repo-root markdown files that are ALSO rendered as a route on this site,
@@ -12,10 +15,18 @@ export const API_DOCS_SOURCE_URL = `${GITHUB_URL}/blob/main/API.md`;
  * site instead of bouncing the reader out to raw markdown on GitHub. Only add a
  * file here once it actually has a route — an entry for a file we don't render
  * produces a 404 that the GitHub fallback would not have.
+ *
+ * EVERY PART, not just the folder's index: each doc is a folder of per-topic
+ * files that the route concatenates back into one page, so a link to any part —
+ * `methodology/lending.md#factor-weights` — is a link to that one route. Built
+ * from the same manifest the routes read, so a new part is routed the moment it
+ * is rendered, rather than silently falling through to the GitHub fallback.
+ * `architecture/` is deliberately absent: it has no route, so its links belong
+ * on GitHub.
  */
 export const RENDERED_DOC_ROUTES: Record<string, string> = {
-  'METHODOLOGY.md': '/methodology',
-  'API.md': '/docs/api',
+  ...Object.fromEntries(METHODOLOGY_PARTS.map((part) => [part, '/methodology'])),
+  ...Object.fromEntries(API_PARTS.map((part) => [part, '/docs/api'])),
 };
 
 /**

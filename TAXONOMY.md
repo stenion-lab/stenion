@@ -13,7 +13,7 @@ that has actually cleared this bar, and a gate shown against real published rule
 way an abstract one is not.
 
 **Where each thing lives.** The rules themselves are published in
-[`METHODOLOGY.md`](METHODOLOGY.md), one `##` section per category; the code that implements them is
+[`methodology/index.md`](methodology/index.md), one `##` section per category; the code that implements them is
 in [`core/`](core) and the adapters; how to write the adapter is in
 [`CONTRIBUTING.md`](CONTRIBUTING.md); what is planned is in [`ROADMAP.md`](ROADMAP.md). This document
 owns only the admission standard.
@@ -42,7 +42,7 @@ Every factor is a different way for that to go wrong — concentration (§1), a 
 protocol's own stress line (§5). Two of those presuppose a borrow/supply ledger outright:
 `liquiditySafety` is `(supplied − borrowed) / supplied`, and `utilizationSafety` grades distance from
 a cap the protocol itself declared. A category whose protocols have neither cannot be graded on
-either, and `METHODOLOGY.md`'s ground rule 1 says so directly: a category boundary "differs because
+either, and `methodology/`'s ground rule 1 says so directly: a category boundary "differs because
 the factor sets differ, not because a protocol asked."
 
 **The test has already been applied twice, in both directions:**
@@ -51,7 +51,7 @@ the factor sets differ, not because a protocol asked."
   exists precisely to say "the rules this protocol's number would be computed under have not been
   written," rather than stretching lending's five over it.
 - **Inward** — oracle _manipulation_ resistance was folded into the existing `oracleSafety` rather
-  than given a sixth factor ([`METHODOLOGY.md`](METHODOLOGY.md#factor-weights), "Factor weights"),
+  than given a sixth factor ([`methodology/lending.md`](methodology/lending.md#factor-weights), "Factor weights"),
   because it answers the same question §2 already asks. That is Gate 0 applied to a factor instead of
   a category, and it is the reason the taxonomy in [`core/src/types.ts`](core/src/types.ts) is still
   five.
@@ -69,7 +69,7 @@ Gate 0 is what justifies paying that cost.
 - **(a) Anchored** — it cites the protocol's own on-chain parameter, **naming the specific contract
   field read**, not merely "the protocol's configuration"; or
 - **(b) Labelled** — it is marked **"unvalidated judgment call"** in **both** the code and
-  `METHODOLOGY.md`, with the reasoning stated and **the direction of error** stated.
+  `methodology/`, with the reasoning stated and **the direction of error** stated.
 
 **Fails if:** a number appears in a formula with no anchor and no label. A reviewer should be able to
 point at any constant in the submission and get one of those two answers immediately.
@@ -85,15 +85,15 @@ the two, which is still K2's number and not ours), and `OPTIMAL_UTILIZATION_RATE
 Exactly **two** Stenion-chosen constants survive in lending's continuous factors, and both carry the
 label in both places — that count is the point of the gate:
 
-| Constant                 | Value   | Code                                         | Doc                                                               | Direction of error, as stated                                                                                                                          |
-| ------------------------ | ------- | -------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `STALE_CEILING_SECONDS`  | `3600`  | [`core/src/scoring.ts`](core/src/scoring.ts) | [`METHODOLOGY.md`](METHODOLOGY.md) §2a                            | Uncapped, a protocol would score _better_ for tolerating staler prices — K2's 12-hour per-asset `max_age` would rate a six-hour-old price ~50.         |
-| `MIN_RESERVE_POOL_SHARE` | `0.005` | [`core/src/scoring.ts`](core/src/scoring.ts) | [the minimum-size filter](METHODOLOGY.md#the-minimum-size-filter) | Set at the **low** end deliberately: too low leaves a dust reserve in (a misleading number); too high hides a small-but-real reserve (strictly worse). |
+| Constant                 | Value   | Code                                         | Doc                                                                       | Direction of error, as stated                                                                                                                          |
+| ------------------------ | ------- | -------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `STALE_CEILING_SECONDS`  | `3600`  | [`core/src/scoring.ts`](core/src/scoring.ts) | [`methodology/index.md`](methodology/index.md) §2a                        | Uncapped, a protocol would score _better_ for tolerating staler prices — K2's 12-hour per-asset `max_age` would rate a six-hour-old price ~50.         |
+| `MIN_RESERVE_POOL_SHARE` | `0.005` | [`core/src/scoring.ts`](core/src/scoring.ts) | [the minimum-size filter](methodology/lending.md#the-minimum-size-filter) | Set at the **low** end deliberately: too low leaves a dust reserve in (a misleading number); too high hides a small-but-real reserve (strictly worse). |
 
 **Weights are type (b) and carry the same label.** They are not an external fact. Lending's five are
 declared once in `CATEGORY_FACTORS` ([`core/src/weights.ts`](core/src/weights.ts)) — whose comment
 says outright that the module "is where they live, not an argument that they are right" — and
-`METHODOLOGY.md`'s "Factor weights" table carries the matching note: `oracleSafety` is heaviest
+`methodology/`'s "Factor weights" table carries the matching note: `oracleSafety` is heaviest
 because an untrustworthy price poisons every other measurement, liquidity lightest because it partly
 overlaps utilization, and there is no external framework the exact numbers are anchored to. A
 category's weight table is therefore part of what Gate 1 reviews, not a presentation detail.
@@ -131,11 +131,11 @@ the top.** A minimum over an empty set is `0`, not `100`.
   publish `excludedReserves`, naming each filtered reserve, its supplied USD, its share, and **the
   score it would have contributed**, so a reader can disagree with the exclusion instead of never
   learning of it.
-- **(b)** [§2e, the oracle-legibility precondition](METHODOLOGY.md#2e-the-oracle-legibility-precondition):
+- **(b)** [§2e, the oracle-legibility precondition](methodology/lending.md#2e-the-oracle-legibility-precondition):
   a market whose price path publishes neither a staleness tolerance nor a deviation bound is not
   scored — not with a guessed anchor, and not with the factor dropped. Those markets are published in
   `coverage.ts` as `oracle-not-gradable`. So is the
-  [market-size floor](METHODOLOGY.md#the-market-size-floor), as `below-size-floor`. Neither renders a
+  [market-size floor](methodology/lending.md#the-market-size-floor), as `below-size-floor`. Neither renders a
   numeral.
 - **(c)** `operationalState` ([`core/src/operational-state.ts`](core/src/operational-state.ts),
   decided in #15): which user operations a market's contracts are currently refusing, published
@@ -164,7 +164,8 @@ danger band where a reader discounts it. Ground rule 4 forbids both.
 ## Gate 3 — Every rejected alternative is recorded by name
 
 **Condition.** Each candidate factor, sub-signal, or scoring approach that was considered and dropped
-has a **named entry in the category's `METHODOLOGY.md` section** giving what it was and why it was
+has a **named entry in the category's `methodology/<category>.md` file** giving what it was and
+why it was
 rejected. A reviewer can find any of them by name.
 
 **Fails if:** the submission presents only what it kept. **An unrecorded rejection gets
@@ -172,7 +173,7 @@ re-litigated** — by a contributor, by a scored protocol, or by us in six month
 around the reasoning has to be rebuilt from memory, if it survives at all.
 
 **Lending as the worked example.** §2's
-[**"What was rejected, and why it must not be re-proposed"**](METHODOLOGY.md#what-was-rejected-and-why-it-must-not-be-re-proposed)
+[**"What was rejected, and why it must not be re-proposed"**](methodology/lending.md#what-was-rejected-and-why-it-must-not-be-re-proposed)
 is the model: three named alternatives (making the oracle metadata reads optional, a `null`
 `oracleSafety`, reading the anchor from an upstream oracle), each with the reason and, where it
 exists, the measured consequence. §2's **"What was considered and deliberately rejected"** does the
@@ -183,7 +184,7 @@ confidence.
 
 Two more instances worth copying:
 
-- [Operational state is published, never scored](METHODOLOGY.md#operational-state-is-published-never-scored)
+- [Operational state is published, never scored](methodology/publishing-rules.md#operational-state-is-published-never-scored)
   records all three options weighed (a sixth factor, a multiplier, a published flag) **and** the
   strongest scored variant — folding `exitDisabled` into `liquiditySafety` — explicitly marked
   "recorded here so it is not re-proposed as the obvious fix."
@@ -211,12 +212,12 @@ A floor is derived, never inherited.
 
 **Lending as the worked example.** Two levels, written together so neither reads as an afterthought:
 
-- **[The minimum-size filter](METHODOLOGY.md#the-minimum-size-filter)** asks whether a _reserve_ is
+- **[The minimum-size filter](methodology/lending.md#the-minimum-size-filter)** asks whether a _reserve_ is
   big enough for its number to mean anything. Motivating observation: on the 2026-08-16 Kinetic
   snapshot a **$3.00** PYUSD reserve — **0.19% of a $1,571 pool** — was the worst reserve on both §4
   and §5, setting `liquiditySafety` to 34 and `utilizationSafety` to 18. Nobody's capital was
   meaningfully exposed to it.
-- **[The market-size floor](METHODOLOGY.md#the-market-size-floor)** asks the same of a whole
+- **[The market-size floor](methodology/lending.md#the-market-size-floor)** asks the same of a whole
   **market**, and derives from what the category's factors do when there is nothing to read: every
   factor falls to its can't-assess branch, and every one of those branches is `0`. Motivating
   observation, dated 2026-08-20: K2 Earn held **$0.00** and the K2 SolvBTC/xSolvBTC market **$3.62**.
@@ -246,7 +247,8 @@ have an undisclosed one.
 
 ## Gate 5 — Comparability declared in both directions, and enforced in the surfaces
 
-**Condition.** The category's `METHODOLOGY.md` section states explicitly that its scores are
+**Condition.** The category's `methodology/<category>.md` file states explicitly that its scores
+are
 **comparable within the category** and **not comparable across categories**, and the submission names
 the specific surfaces that enforce it.
 
@@ -292,11 +294,13 @@ second table, or a dashboard constant.
 
 **Lending as the worked example.** The chain runs adapter → `CATEGORY_FACTORS` → the published
 rulebook, with no hand-written copy in it. Adapters read `LENDING_FACTORS.<factor>.weight` and never
-a literal (#77). `scoring.test.ts` then parses `METHODOLOGY.md` rather than restating it: it locates
+a literal (#77). `scoring.test.ts` then parses `methodology/<category>.md` rather than restating
+it: it locates
 a category's section by `## ${CATEGORY_FACTORS[category].label}` — the heading text comes from the
 code, so the document and the code cannot disagree about what the section is called — and pulls the
 weight table and the worked example out of that slice. Its assertions are **already per category**
-and already iterate `PROTOCOL_CATEGORIES`, so a category registered in code with no `METHODOLOGY.md`
+and already iterate `PROTOCOL_CATEGORIES`, so a category registered in code with no
+`methodology/<category>.md`
 section fails with the message that "a category with no published rulebook is a score nobody outside
 can check."
 
@@ -334,7 +338,7 @@ added to `PROTOCOL_CATEGORIES` is a compile error until it has an entry (#76), t
 **the integer alone does not identify a rulebook**: the indexer stamps `risk_scores.category` beside
 `risk_scores.methodology_version`, resolved from the target's own category, and an adapter has no say
 in the version — it only declares which category it belongs to.
-[`METHODOLOGY.md`'s "Current version"](METHODOLOGY.md#current-version) table carries one row per
+[`methodology/index.md`'s "Current version"](methodology/index.md#current-version) table carries one row per
 category, pointing at that category's own section for the changelog behind it.
 
 **Backfilling is not a policy but an impossibility, and say so:** `risk_scores` stores only outputs —
@@ -343,7 +347,7 @@ including us, can recompute an old row under new rules. The discontinuity is lab
 the score-history chart **breaks the line** at a version change rather than drawing through it.
 
 **What a new category does not inherit:** lending's v1 discarded a few weeks of development-era
-history rather than migrating it, on reasoning `METHODOLOGY.md` explicitly closes — "this is the last
+history rather than migrating it, on reasoning `methodology/` explicitly closes — "this is the last
 time that reasoning applies." A new category starts with no history at all, so it never needs that
 argument. What it does inherit is the rule from that day forward: bump when a change alters what a
 number means; don't bump for a fix that makes the implementation match the rule already documented
@@ -409,7 +413,7 @@ yes/no, and every box must be **yes**.
 - [ ] A complete list of every threshold in the rulebook — none omitted.
 - [ ] Each anchored threshold names the **specific contract field** it reads.
 - [ ] Each unanchored threshold is marked "unvalidated judgment call" in **the code**.
-- [ ] …and in **`METHODOLOGY.md`**, with the reasoning **and the direction of error**.
+- [ ] …and in **`methodology/`**, with the reasoning **and the direction of error**.
 - [ ] The weight table is present and carries the same label — weights are a judgment call.
 
 **Gate 2 — ungradable is disclosed**
@@ -476,5 +480,5 @@ yes/no, and every box must be **yes**.
 
 **A submission that clears every gate is a rulebook.** It is then reviewed at the same bar as any
 methodology change — see
-[Disputing or changing a threshold](METHODOLOGY.md#disputing-or-changing-a-threshold) — and only then
+[Disputing or changing a threshold](methodology/publishing-rules.md#disputing-or-changing-a-threshold) — and only then
 does an adapter get written against it.

@@ -4,8 +4,8 @@ Thanks for wanting to contribute. The main contribution path is **writing an ada
 protocol** — DeFiLlama-style: one open-source, PR-reviewed adapter per protocol. This guide is
 meant to be complete enough that you can ship an adapter without needing to ask questions first.
 
-Before you start, read [`METHODOLOGY.md`](METHODOLOGY.md) (the exact formulas your adapter must
-implement) and skim [`ARCHITECTURE.md`](ARCHITECTURE.md) (how your adapter fits into the system).
+Before you start, read [`methodology/index.md`](methodology/index.md) (the exact formulas your adapter must
+implement) and skim [`architecture/index.md`](architecture/index.md) (how your adapter fits into the system).
 
 ## Ground rules (read these first)
 
@@ -16,14 +16,14 @@ An adapter that breaks any of these will not be merged, regardless of how good t
    isn't derivable from the chain, it doesn't go in the score.
 2. **No fabricated numbers.** Where real data genuinely isn't available for a factor, use a
    clearly-flagged neutral baseline and say so in the factor's `detail` string (see
-   `adminKeySafety`'s contract-admin case in `METHODOLOGY.md` for the canonical example). Never
+   `adminKeySafety`'s contract-admin case in `methodology/` for the canonical example). Never
    invent a plausible-looking value.
 3. **Anchor thresholds to the protocol's real parameters — don't invent new ones.** The formulas,
-   scales, and thresholds are fixed in `METHODOLOGY.md` and identical across protocols. What
+   scales, and thresholds are fixed in `methodology/` and identical across protocols. What
    legitimately differs per adapter is only _where you read the raw inputs on-chain_. If your
    protocol has a different on-chain parameter that a continuous factor should anchor to (e.g. Blend
    reads a per-reserve `max_util`; K2 has none and anchors to `OPTIMAL_UTILIZATION_RATE`), that's a
-   documented per-protocol fact you add to `METHODOLOGY.md` — **not** a new threshold you invent
+   documented per-protocol fact you add to `methodology/` — **not** a new threshold you invent
    inline. See [Changing a formula or threshold](#changing-a-formula-or-threshold).
 4. **Confirm the actual on-chain structure — don't assume it mirrors Blend or K2.** Every
    method/field name in the shipped adapters was confirmed against the protocol's audited source or
@@ -72,7 +72,7 @@ what the contracts refuse; pass the operations, not a level you picked.
 
 **This value must never reach a number.** It is published beside the score and deliberately not
 graded — the reasoning is in
-[`METHODOLOGY.md`](METHODOLOGY.md#operational-state-is-published-never-scored) and it is not a
+[`methodology/publishing-rules.md`](methodology/publishing-rules.md#operational-state-is-published-never-scored) and it is not a
 detail to be revisited in an adapter PR. Both shipped adapters carry a test asserting that
 `computeRiskFactors` returns a byte-identical factor map across every restricted state the protocol
 can be in; **write the same test for yours.** It is the check that keeps the decision a property of
@@ -236,7 +236,7 @@ Conventions you must not break:
   not something an adapter picks: the numbers used to be spelled out inside each adapter, and two
   copies that drift produce two plausible scores from two different weightings while failing
   nothing. The declarations live in [`core/src/weights.ts`](core/src/weights.ts), keyed by
-  category, and `core/src/scoring.test.ts` pins them against `METHODOLOGY.md`'s published weight
+  category, and `core/src/scoring.test.ts` pins them against `methodology/`'s published weight
   table. Your adapter's suite should assert it carries what its category declares — see the
   `the factor map itself` block in either lending suite — rather than restating the numbers, which
   would just be another copy.
@@ -256,7 +256,8 @@ Conventions you must not break:
 **How** a factor is computed can differ per protocol; the names, scale, weights, and thresholds do
 not — **within a category**. New factors are added to `@stenion/core` for everyone in that category
 at once, never invented per-adapter. The five above are lending's set; a different category
-declares its own in `CATEGORY_FACTORS` and publishes it in its own `METHODOLOGY.md` section, and
+declares its own in `CATEGORY_FACTORS` and publishes it in its own
+`methodology/<category>.md` file, and
 that is the only place a rule is allowed to differ.
 
 > **Proposing a new category? Start at [`TAXONOMY.md`](TAXONOMY.md), not here.** A category is
@@ -279,7 +280,7 @@ score(factors: RiskFactorMap): RiskScoreResult {
 The method exists on the interface only so the indexer can call it; the arithmetic behind it is not
 yours to choose.
 
-**Why it's shared, not copied.** Ground rule 1 in [`METHODOLOGY.md`](METHODOLOGY.md) is that one
+**Why it's shared, not copied.** Ground rule 1 in [`methodology/index.md`](methodology/index.md) is that one
 rulebook applies to every protocol — that is the entire basis for claiming two protocols' scores are
 comparable. A per-adapter copy of the weighted mean is a second rulebook waiting to happen: the
 moment one copy is edited and the others aren't, "Blend 53 vs Kinetic 61" stops meaning anything,
@@ -288,7 +289,7 @@ formula lives in [`core/src/scoring.ts`](core/src/scoring.ts), where changing it
 protocol at once, deliberately and visibly.
 
 That also means **a change to the weighted mean is a methodology change, not an adapter change** —
-it moves every published score, so it needs the `METHODOLOGY.md` edit and probably a
+it moves every published score, so it needs the `methodology/` edit and probably a
 bump of your category's `METHODOLOGY_VERSIONS` entry
 (see [Changing a formula or threshold](#changing-a-formula-or-threshold)).
 If you find yourself wanting different scoring arithmetic for your protocol, that's the conversation
@@ -303,7 +304,7 @@ The error model is deliberately simple and lives in the indexer, not duplicated 
   partial factor map with guessed numbers.
 - **The indexer wraps each run in try/catch** and records a failed/stale run for that protocol,
   without aborting the cycle or crashing the process. One protocol failing never affects another.
-- A missing/undecodable oracle price is _not_ an error to swallow — per `METHODOLOGY.md` it's a
+- A missing/undecodable oracle price is _not_ an error to swallow — per `methodology/` it's a
   real signal and scores `0` (a missing feed is maximally unsafe). Follow the methodology for what's
   "no data → 0" versus what's "genuinely broken → throw."
 
@@ -327,7 +328,7 @@ _deliberately skipped_ because they aren't (details in [`ROADMAP.md`](ROADMAP.md
   native-Soroban lending markets on their own contracts, and four of the five factors compute from
   them without incident. Their oracles simply publish nothing `oracleSafety` can be anchored to: no
   staleness tolerance and no deviation bound, neither of which SEP-40 defines. See
-  [`METHODOLOGY.md`](METHODOLOGY.md) §2e, "The oracle-legibility precondition".
+  [`methodology/index.md`](methodology/index.md) §2e, "The oracle-legibility precondition".
 
 So: confirm reserves, utilization, liquidity, admin, and oracle are all readable via **Soroban RPC +
 Horizon** from the protocol's _own_ contracts (not another chain, not another protocol's pool)
@@ -388,7 +389,7 @@ byte-for-byte, you are looking at a Blend market and the answer is a `BLEND_POOL
 
 **Adding a Blend pool**, once you have confirmed that:
 
-1. Add a `BlendPool` to `BLEND_POOLS` in `adapters/blend.ts` — slug, name, pool contract, and a
+1. Add a `BlendPool` to `BLEND_POOLS` in `adapters/blend/types.ts` — slug, name, pool contract, and a
    `deployedOn` label. No scoring code, and nothing on that type may be a threshold or a weight.
 2. `pnpm capture:fixture <slug>` and add a block to `adapters/snapshot.test.ts` asserting the
    captured factor map, the score, and that `metadata.contractId` is **this** pool.
@@ -415,8 +416,26 @@ pnpm --filter @stenion/db migrate
 
 Then, iterating on your adapter:
 
-1. Add your adapter file at `adapters/<protocol>.ts` and export it from
-   [`adapters/index.ts`](adapters/index.ts).
+1. Add your adapter as a FOLDER at `adapters/<protocol>/`, and export it from
+   [`adapters/index.ts`](adapters/index.ts). Four files, the same shape both shipped adapters use:
+
+   | file       | holds                                                                         |
+   | ---------- | ----------------------------------------------------------------------------- |
+   | `types.ts` | mainnet wiring, constants, the raw on-chain shape, the adapter's options      |
+   | `fetch.ts` | everything that touches RPC/Horizon, plus the decoders, as one `fetch*` entry |
+   | `score.ts` | the five factors and `operationalState` — pure functions of the raw data      |
+   | `index.ts` | the `Adapter` class, and the folder's whole public surface                    |
+
+   `index.ts` re-exports **explicitly**, never `export *`: the other three export more than the
+   package's API, and a wildcard would make every internal helper a published name that a consumer
+   could come to depend on. Keeping `score.ts` free of RPC is what lets every rule in
+   `methodology/` be exercised from a fixture, which is what the tests below do.
+
+   Tests mirror the same split — `fetch.test.ts` beside `fetch.ts`, `score.test.ts` beside
+   `score.ts` — and both import through `./index.ts` rather than reaching past it. Cross-adapter
+   captured-mainnet snapshots go in `adapters/snapshot.test.ts` instead, since they pin more than
+   one adapter and belong to no single folder.
+
 2. Register it in the indexer's `buildTargets()` ([`indexer/src/index.ts`](indexer/src/index.ts))
    via the existing `toTarget<T>()` wrapper — that's what lets your adapter's `TRawData` coexist in
    one typed run loop with the others.
@@ -484,8 +503,9 @@ need separating first — keep the computation pure and pass it data, the way an
 
 **For a new adapter, that separation is exactly what makes it testable.** `computeRiskFactors` takes
 your already-decoded `TRawData`, so you can build that shape by hand and assert the factors it
-produces — no RPC, no mocking of the Stellar SDK. See `adapters/blend.test.ts` and
-`adapters/kinetic.test.ts`: each defines a small `reserve()` / `makeRaw()` builder with sensible
+produces — no RPC, no mocking of the Stellar SDK. See `adapters/blend/score.test.ts` and
+`adapters/kinetic/score.test.ts`: each defines a small `reserve()` / `makeRaw()` builder with
+sensible
 defaults, and each test overrides only the field it's about. Cover the cases your protocol's live
 state can't currently reach, because those are the ones nobody would otherwise notice breaking —
 for both shipped adapters that's the whole of `oracleSafety`'s failure side.
@@ -560,7 +580,7 @@ Two mechanical gotchas, both from Node's type stripping being purely syntactic:
   won't be importable from a test until this is right — the build won't tell you, since tsc erases
   the unused names anyway.
 - If you add a package-level test, that package needs the `tsconfig.json` / `tsconfig.build.json`
-  split described in [`ARCHITECTURE.md`](ARCHITECTURE.md#monorepo-layout). Copy `adapters/`.
+  split described in [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md#monorepo-layout). Copy `adapters/`.
 
 ## Formatting
 
@@ -596,7 +616,7 @@ An optional commit helper ([`git-aic`](https://github.com/Spectra010s/git-aic)) 
 
 ```bash
 git add <files...>
-pnpm commit
+pnpm -w run commit
 ```
 
 You can also write conventional commits manually using standard `git commit -m "type(scope): description"`.
@@ -610,16 +630,16 @@ quietly.
 
 ## Changing a formula or threshold
 
-Code and `METHODOLOGY.md` are **not allowed to drift**. If you touch factor logic — a threshold, a
+Code and `methodology/` are **not allowed to drift**. If you touch factor logic — a threshold, a
 weight, an anchor — you change both in the same PR, at the same review bar.
 
-Everything in `METHODOLOGY.md` is meant to be challengeable, including by protocols being scored.
+Everything in `methodology/` is meant to be challengeable, including by protocols being scored.
 To propose a change:
 
 1. **Open an issue** describing the specific threshold/formula and why it's wrong, anchored to
    something external where possible (a protocol's own on-chain parameter, a published risk
    framework, observed data) — not preference.
-2. **Or open a PR** editing `METHODOLOGY.md` _and_ the adapter code together, with justification.
+2. **Or open a PR** editing `methodology/` _and_ the adapter code together, with justification.
 3. Adding or removing a factor is a **breaking change to the shared taxonomy** in
    `core/src/types.ts` — it affects every adapter at once and is held to a higher bar again.
 
@@ -627,14 +647,14 @@ To propose a change:
 
 Your PR should:
 
-- Implement all five `*Safety` factors per the `METHODOLOGY.md` formulas (or `null` with a real
+- Implement all five `*Safety` factors per the `methodology/` formulas (or `null` with a real
   reason), each with a meaningful `detail` string.
 - Confirm every on-chain method/field name against the protocol's audited source or SDK — say so,
   and link it.
 - Include the live-mainnet verification (what you ran, what the output was, why it's plausible).
 - Pass `pnpm format:check`, `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` from the repo
   root. CI runs all five, in that order.
-- Update `METHODOLOGY.md` in the same PR if — and only if — you introduced a per-protocol anchoring
+- Update `methodology/` in the same PR if — and only if — you introduced a per-protocol anchoring
   fact (like K2's `OPTIMAL_UTILIZATION_RATE`).
 
 Reviews are careful, because a merged adapter puts a public number on a real protocol. **No change

@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for contributing to Stenion. Before opening, please check
-        [CONTRIBUTING.md](../CONTRIBUTING.md) and [METHODOLOGY.md](../METHODOLOGY.md).
+        [CONTRIBUTING.md](../CONTRIBUTING.md) and [methodology/index.md](../methodology/index.md).
 
         Any PR that comes out of this should target the `dev` branch, not `main`.
 

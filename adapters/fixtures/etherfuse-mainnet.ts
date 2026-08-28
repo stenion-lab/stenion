@@ -10,7 +10,7 @@
 // `satisfies` is load-bearing: if BlendRawData gains a required field, this file
 // stops compiling rather than quietly feeding the adapter a stale shape.
 
-import type { BlendRawData } from '../blend.ts';
+import type { BlendRawData } from '../blend/index.ts';
 
 export const etherfuseMainnet = {
   poolId: 'CDMAVJPFXPADND3YRL4BSM3AKZWCTFMX27GLLXCML3PD62HEQS5FPVAI',

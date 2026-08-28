@@ -2,7 +2,7 @@
 
 **Live, on-chain risk intelligence for Stellar/Soroban DeFi.**
 
-[stenion.vercel.app](https://stenion.vercel.app) · [API](API.md) · [Methodology](METHODOLOGY.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
+[stenion.vercel.app](https://stenion.vercel.app) · [API](api-docs/index.md) · [Methodology](methodology/index.md) · [Architecture](architecture/index.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
 ---
 
@@ -47,7 +47,7 @@ These are non-negotiable and enforced in code and review:
   generates an independent risk assessment.
 
 The full, challengeable rulebook — every formula, threshold, and weight — lives in
-[`METHODOLOGY.md`](METHODOLOGY.md). If you're a protocol being scored and think a threshold is
+[`methodology/index.md`](methodology/index.md). If you're a protocol being scored and think a threshold is
 wrong, that document tells you how to dispute it.
 
 ## Quick start (run it locally)
@@ -92,11 +92,11 @@ pnpm --filter @stenion/dashboard dev             # http://localhost:3000
 The dashboard reads Postgres in-process, so once step 4 has landed at least one row you'll see
 real scores at `http://localhost:3000`. The public API is served by the dashboard at
 `/api/v1/protocols`, `/api/v1/coverage`, `/api/v1/protocol/:id`, and `/api/v1/health` — versioned,
-with the policy in [`ARCHITECTURE.md`](ARCHITECTURE.md#api-versioning).
+with the policy in [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md#api-versioning).
 
 ### Using the public API
 
-**The full reference is [`API.md`](API.md)** — every endpoint with live example responses, the
+**The full reference is [`api-docs/index.md`](api-docs/index.md)** — every endpoint with live example responses, the
 `ok`/`failed` history union, the staleness model, error shapes, and the versioning commitment. It's
 also rendered on the site at [/docs/api](https://stenion.vercel.app/docs/api). The summary:
 
@@ -118,7 +118,7 @@ Behind a shared NAT you share a bucket with everyone on that address; cached res
 which is what makes that workable in practice. If you're building something that genuinely needs
 more, open an issue — the numbers are policy, not physics. Full reasoning, and what the limiter
 does and doesn't protect against, is in
-[`ARCHITECTURE.md`](ARCHITECTURE.md#caching-and-rate-limits).
+[`architecture/deploy-architecture.md`](architecture/deploy-architecture.md#caching-and-rate-limits).
 
 ### Is the data fresh? — `GET /api/v1/health`
 
@@ -172,7 +172,7 @@ Three things to know:
 `thresholdMinutes` is echoed in the body so you can see what number produced the verdict. It
 defaults to 30 (six missed cycles at the ~5-minute indexer cadence) and is configurable via
 `STENION_HEALTH_STALE_MINUTES`. Full reasoning for both thresholds is in
-[`ARCHITECTURE.md`](ARCHITECTURE.md#the-health-endpoint).
+[`architecture/deploy-architecture.md`](architecture/deploy-architecture.md#the-health-endpoint).
 
 There is also a human-readable **[/status](https://stenion.vercel.app/status)** page on the site
 that fetches this endpoint and renders the overall state prominently, plus per-protocol freshness
@@ -197,12 +197,12 @@ Locally you run scoring cycles by hand (step 4). In production nothing in this r
 `POST /api/cron/run-indexer` runs exactly one cycle per request, and an external cron-job.org job
 calls it every 5 minutes with `Authorization: Bearer <CRON_SECRET>`. **That schedule is configured
 in cron-job.org's dashboard, not in version control** — there's no workflow or `vercel.json` `crons`
-entry here to find. See [`ARCHITECTURE.md`](ARCHITECTURE.md#deploy-architecture) for why.
+entry here to find. See [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md#deploy-architecture) for why.
 
 > **Note:** the public RPC (`mainnet.sorobanrpc.com`) is shared and rate-limited — fine for trying
 > it out, but use your own endpoint for anything sustained.
 
-See [`.env.example`](.env.example) for every variable and [`ARCHITECTURE.md`](ARCHITECTURE.md) for
+See [`.env.example`](.env.example) for every variable and [`architecture/index.md`](architecture/index.md) for
 what each package does and how data flows through the system.
 
 **One-time git setup.** Formatting is enforced by Prettier, and the repo was reformatted in a
@@ -226,12 +226,12 @@ protocol's real on-chain parameters — never invented.
 
 ## Documentation
 
-| Doc                                  | What's in it                                                                                       |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| [`METHODOLOGY.md`](METHODOLOGY.md)   | The source of truth for every factor's formula, thresholds, and weights. Public and challengeable. |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Monorepo layout, what each package does, data flow, and the deploy architecture.                   |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to write an adapter, the taxonomy and conventions, PR expectations, local dev.                 |
-| [`ROADMAP.md`](ROADMAP.md)           | What's live, what's planned, what's out of scope.                                                  |
+| Doc                                              | What's in it                                                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| [`methodology/index.md`](methodology/index.md)   | The source of truth for every factor's formula, thresholds, and weights. Public and challengeable. |
+| [`architecture/index.md`](architecture/index.md) | Monorepo layout, what each package does, data flow, and the deploy architecture.                   |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)             | How to write an adapter, the taxonomy and conventions, PR expectations, local dev.                 |
+| [`ROADMAP.md`](ROADMAP.md)                       | What's live, what's planned, what's out of scope.                                                  |
 
 ## License
 
