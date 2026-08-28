@@ -44,8 +44,9 @@ function repoFile(name: string): string {
 }
 
 /**
- * One category's slice of METHODOLOGY.md: its `## <Label>` heading down to the
- * next h2.
+ * One category's slice of its methodology file: its `## <Label>` heading down to
+ * the next h2. METHODOLOGY.md is a folder now, one file per category, so `doc`
+ * is that category's file rather than the whole rulebook.
  *
  * Deliberately duplicated from `scoring.test.ts` rather than shared. A test file
  * importing another test file makes the helper run as a suite of its own under
@@ -57,7 +58,10 @@ function categorySection(doc: string, category: ProtocolCategory): string {
   const heading = `## ${CATEGORY_FACTORS[category].label}`;
   const lines = doc.split('\n');
   const start = lines.findIndex((l) => l.trimEnd() === heading);
-  assert.ok(start >= 0, `METHODOLOGY.md has no "${heading}" section for category ${category}`);
+  assert.ok(
+    start >= 0,
+    `methodology/${category}.md has no "${heading}" section for category ${category}`,
+  );
   const rest = lines.slice(start + 1);
   // `^## ` matches an h2 only — an h3 starts `###`, so the space fails to match.
   const end = rest.findIndex((l) => /^## /.test(l));
@@ -140,19 +144,19 @@ describe('the category registry', () => {
     // 1, so a file-wide max mixes two categories' numbering and silently
     // compares lending's constant against whichever category happens to be
     // furthest along. It is right today only because there is one category.
-    const doc = repoFile('METHODOLOGY.md');
-
     for (const category of PROTOCOL_CATEGORIES) {
-      const section = categorySection(doc, category);
+      // One file per category, so a category with no `methodology/<id>.md`
+      // throws here — the same alarm a missing section used to raise.
+      const section = categorySection(repoFile(`methodology/${category}.md`), category);
       const versions = [...section.matchAll(/^\|\s*\*\*(\d+)\*\*\s*\|/gm)].map((m) => Number(m[1]));
       assert.ok(
         versions.length > 0,
-        `could not parse ${category}'s version changelog out of METHODOLOGY.md — has its format changed?`,
+        `could not parse ${category}'s version changelog out of methodology/${category}.md — has its format changed?`,
       );
       assert.equal(
         Math.max(...versions),
         METHODOLOGY_VERSIONS[category],
-        `METHODOLOGY.md's newest published version for ${category} differs from METHODOLOGY_VERSIONS.${category}`,
+        `methodology/${category}.md's newest published version for ${category} differs from METHODOLOGY_VERSIONS.${category}`,
       );
     }
   });

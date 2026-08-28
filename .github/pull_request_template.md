@@ -22,9 +22,9 @@ utilization percentage). Paste the output.
 - [ ] `pnpm format`, `pnpm build`, `pnpm lint`, `pnpm typecheck` all pass from the repo root.
 - [ ] Every on-chain method/field name is confirmed against the protocol's audited source or SDK —
       linked above, not guessed.
-- [ ] All five `*Safety` factors are implemented per `METHODOLOGY.md` (or `null` with a real
+- [ ] All five `*Safety` factors are implemented per `methodology/` (or `null` with a real
       reason), each with a meaningful `detail` string.
 - [ ] No fabricated numbers — a factor without real data uses a clearly-flagged neutral baseline.
-- [ ] `METHODOLOGY.md` is updated in this PR if a formula, threshold, weight, or per-protocol
+- [ ] `methodology/` is updated in this PR if a formula, threshold, weight, or per-protocol
       anchoring fact changed. Code and methodology are not allowed to drift.
 - [ ] Any new dependency is called out explicitly above, with justification.

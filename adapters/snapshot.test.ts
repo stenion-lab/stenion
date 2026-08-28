@@ -41,8 +41,8 @@ import {
   BLEND_POOLS,
   BLEND_YIELDBLOX_V2,
   BlendAdapter,
-} from './blend.ts';
-import { KineticAdapter } from './kinetic.ts';
+} from './blend/index.ts';
+import { KineticAdapter } from './kinetic/index.ts';
 import { blendMainnet } from './fixtures/blend-mainnet.ts';
 import { etherfuseMainnet } from './fixtures/etherfuse-mainnet.ts';
 import { kineticMainnet } from './fixtures/kinetic-mainnet.ts';

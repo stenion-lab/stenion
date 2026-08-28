@@ -10,7 +10,7 @@
 // `satisfies` is load-bearing: if BlendRawData gains a required field, this file
 // stops compiling rather than quietly feeding the adapter a stale shape.
 
-import type { BlendRawData } from '../blend.ts';
+import type { BlendRawData } from '../blend/index.ts';
 
 export const yieldbloxMainnet = {
   poolId: 'CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS',

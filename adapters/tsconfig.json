@@ -2,7 +2,11 @@
   // Sources + tests, no emit — what editors resolve files through.
   // See ../tsconfig.check.json for why this, and not the build config, is the
   // one named tsconfig.json. Emitting to dist/ is tsconfig.build.json.
+  //
+  // `**/*.ts` rather than `*.ts` since each adapter became a folder
+  // (blend/, kinetic/). fixtures/ is picked up here on purpose — it was only
+  // ever typechecked transitively through the snapshot test before.
   "extends": "../tsconfig.check.json",
-  "include": ["*.ts"],
+  "include": ["**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

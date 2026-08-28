@@ -5,11 +5,11 @@ must not be broken, and points to the public docs for everything else. **Don't d
 here** — each public doc owns its content:
 
 - **[`README.md`](README.md)** — what Stenion is, the pitch, local quick-start.
-- **[`ARCHITECTURE.md`](ARCHITECTURE.md)** — monorepo layout, what each package does, data flow, deploy.
-- **[`METHODOLOGY.md`](METHODOLOGY.md)** — the source of truth for every factor's formula, thresholds, weights.
+- **[`architecture/index.md`](architecture/index.md)** — monorepo layout, what each package does, data flow, deploy.
+- **[`methodology/index.md`](methodology/index.md)** — the source of truth for every factor's formula, thresholds, weights.
 - **[`TAXONOMY.md`](TAXONOMY.md)** — the admission standard a new scoring category must clear before
   an adapter is written for it. Owns the gates and the pre-flight checklist; nothing here restates them.
-- **[`API.md`](API.md)** — the public API contract as a consumer meets it: endpoints, live example
+- **[`api-docs/index.md`](api-docs/index.md)** — the public API contract as a consumer meets it: endpoints, live example
   responses, the `ok`/`failed` union, staleness, rate limits, errors. Rendered at `/docs/api`.
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — how to write an adapter, conventions, PR expectations.
 - **[`ROADMAP.md`](ROADMAP.md)** — what's live, what's planned, what's out of scope, and open taxonomy questions.
@@ -31,16 +31,21 @@ These override any default behavior and are enforced in code and review:
 - **Adapters read trustless on-chain data** (Soroban RPC + Horizon) — never self-reported figures.
 - **No fabricated numbers.** When real data isn't available for a factor, use a clearly-flagged
   neutral baseline (e.g. `adminKeySafety`'s contract-admin `60`) — never an invented value.
-- **`API.md`'s example responses are captured live, never written from the types.** A doc written
+- **`api-docs/`'s example responses are captured live, never written from the types.** A doc written
   from `db/src/store.ts` reproduces the type rather than the truth, and what a client observes is
   not always what a route sets (the CDN eats `s-maxage`). Re-`curl` them when a shape changes.
-- **Code and `METHODOLOGY.md` are not allowed to drift.** Any change to a formula/threshold/weight
+- **Code and `methodology/` are not allowed to drift.** Any change to a formula/threshold/weight
   changes both together, at the same review bar. Shared rulebook logic that two adapters would
   otherwise duplicate lives in [`core/src/scoring.ts`](core/src/scoring.ts), so it can't drift
-  between them. **`METHODOLOGY.md` is organized per category** — each `ProtocolCategory` owns one
-  `##` section holding its factor list, weight table, worked example and version changelog, and
-  `core/src/scoring.test.ts` parses a named category's section rather than the whole file. Adding a
-  category means adding that section; a category without one is a score with no published rules.
+  between them. **`methodology/` is organized per category** — each `ProtocolCategory` owns one
+  FILE, named for the category (`methodology/lending.md`), holding its `## <Label>` section with its
+  factor list, weight table, worked example and version changelog; `core/src/scoring.test.ts` and
+  `core/src/category.test.ts` read `methodology/<category>.md` and parse that section out of it.
+  Adding a category means adding that file; a category without one is a score with no published
+  rules. The shared, category-agnostic material (ground rules, score model, what is published
+  without being scored) lives in `methodology/index.md` and `methodology/publishing-rules.md`.
+  **Order is content**: the parts concatenate back to one document, and the order they do that in
+  is declared once in `dashboard/app/lib/doc-parts.mjs`.
 - **A scoring change that makes old scores non-comparable bumps that category's
   `METHODOLOGY_VERSIONS` entry** (`core/src/category.ts`), stamped onto every run by the indexer
   alongside `risk_scores.category` — counters are per category and each starts at 1, so the pair
@@ -107,7 +112,7 @@ These override any default behavior and are enforced in code and review:
   (`collateralSafety`, `oracleSafety`, `adminKeySafety`, `liquiditySafety`, `utilizationSafety`).
   _How_ a factor is computed can differ per protocol; the names/scale/thresholds do not. New factors
   are added to `core` for everyone — never invented per-adapter (a breaking change to the taxonomy).
-- Formulas, weights, and per-protocol anchoring facts live in [`METHODOLOGY.md`](METHODOLOGY.md) —
+- Formulas, weights, and per-protocol anchoring facts live in [`methodology/index.md`](methodology/index.md) —
   the public rulebook. Don't restate them here.
 
 ## Code conventions
@@ -118,7 +123,7 @@ These override any default behavior and are enforced in code and review:
   field, so a contributor's local pnpm and CI's cannot diverge. Corepack enforces it — with
   `corepack enable` done, `pnpm --version` inside this repo reports the pinned version regardless of
   any globally-installed pnpm. Bump it with `corepack use pnpm@<version>`, and expect a lockfile
-  review. pnpm workspaces monorepo — see [`ARCHITECTURE.md`](ARCHITECTURE.md) for the package map.
+  review. pnpm workspaces monorepo — see [`architecture/index.md`](architecture/index.md) for the package map.
 - **TypeScript config split:** `tsconfig.base.json` (shared settings) → `tsconfig.node.json`
   (`nodeNext`, extended by all backend packages) → `dashboard` has its own Next.js config (bundler
   resolution), which does **not** extend the Node config. Plus `tsconfig.check.json` (`noEmit` +
@@ -129,12 +134,14 @@ These override any default behavior and are enforced in code and review:
   and the editor red-underlines every `.ts` import while the CLI stays green. Verify with
   `pnpm -r exec tsc --showConfig` if something looks off (restart the TS server before assuming a
   config bug — editor squiggles can be stale cache).
-- **A tested module should be a leaf.** Node's type-stripping loader resolves a test's import graph
-  literally, so a module a test imports cannot use extensionless relative imports. Keep such modules
-  free of relative imports and the question never arises. `indexer/src/cycle.ts` is the one
-  exception — it imports `./retry.ts` / `./alerts.ts` with explicit extensions, and
-  `indexer/tsconfig.build.json` adds `rewriteRelativeImportExtensions` so tsc emits `.js`. Prefer
-  the leaf shape; reach for the flag only when a tested module genuinely needs siblings.
+- **A tested module that has siblings names them with an explicit `.ts`.** Node's type-stripping
+  loader resolves a test's import graph literally, so a module a test imports cannot use
+  extensionless relative imports; the emitted CommonJS must still say `.js`. Where both are true,
+  the package sets `allowImportingTsExtensions` + `rewriteRelativeImportExtensions` in its
+  `tsconfig.build.json` so one source satisfies both — `indexer` (for `cycle.ts` → `./retry.ts` /
+  `./alerts.ts`) and `adapters` (for each adapter's `index.ts` → `./fetch.ts` / `./score.ts` /
+  `./types.ts`). Elsewhere, keep a tested module a leaf with no relative imports and the question
+  never arises.
 - **A weight is never a literal in an adapter.** Which factors a category scores, what each is
   weighted, and what it is called are declared once in
   [`core/src/weights.ts`](core/src/weights.ts) (`CATEGORY_FACTORS`, keyed by `ProtocolCategory`
@@ -144,6 +151,19 @@ These override any default behavior and are enforced in code and review:
   `scoreFactors` exists to prevent, applied to the numbers it averages. `scoreFactors` is generic
   over the factor map for the same reason: the weighted mean is category-agnostic, so there must
   never be a per-category variant of it.
+- **An adapter is a FOLDER of four files, and only `index.ts` is API.** `adapters/<protocol>/`
+  holds `types.ts` (mainnet wiring, constants, raw on-chain shape, options), `fetch.ts` (everything
+  touching RPC/Horizon, plus decoders, behind one `fetch*` entry point), `score.ts` (the five
+  factors and `operationalState`, pure functions of the raw data — no RPC, no clock, no instance
+  state, which is what lets a fixture exercise every rule) and `index.ts` (the `Adapter` class).
+  `index.ts` re-exports **explicitly, never `export *`**: the other three export more than the
+  package's API, and a wildcard would publish every internal helper as a name consumers can depend
+  on. The tests live in the folder and mirror it: `fetch.test.ts` covers the read-side
+  decodes and verdicts, `score.test.ts` the factors and `operationalState`. Both reach the
+  code through `./index.ts`, the same public surface they used before the split, so the
+  split moved tests without changing what any of them covers. The cross-adapter
+  captured-mainnet snapshots stay at `adapters/snapshot.test.ts` — they pin several
+  adapters at once and belong to no one folder.
 - **One adapter may serve several markets; a market never gets its own adapter.** `BlendAdapter`
   takes a `BlendPool` (slug, name, pool contract, mark, links, `deployedOn`) and the indexer
   iterates `BLEND_POOLS` — every Blend market runs the same wasm, so a second pool is a config
@@ -170,26 +190,28 @@ These override any default behavior and are enforced in code and review:
 - **No new dependencies without flagging.** This is solo and pre-funding, on free tiers. If a change
   needs a package, call it out explicitly with the justification — don't add it quietly. (The
   dashboard's UI stack — Tailwind v4, framer-motion, etc. — is a deliberate, already-decided
-  exception, documented in `ARCHITECTURE.md`/the dashboard.)
+  exception, documented in `architecture/`/the dashboard.)
 - Full adapter-writing guide (interface, taxonomy, verification, PR bar) is in
   [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-## Deploy architecture (summary — full detail in `ARCHITECTURE.md`)
+## Deploy architecture (summary — full detail in `architecture/`)
 
-One Vercel project = the `dashboard`. A page that renders a repo-root markdown file (`/methodology`
-→ `METHODOLOGY.md`, `/docs/api` → `API.md`) **must** have an `outputFileTracingIncludes` entry in
-`next.config.mjs` — the file is outside the dashboard dir, and without it the route works in
-`next dev` and fails only in production. **`@stellar/stellar-sdk` must never be added to
+One Vercel project = the `dashboard`. A page that renders repo-root markdown (`/methodology` →
+`methodology/`, `/docs/api` → `api-docs/`) **must** have an `outputFileTracingIncludes` entry in
+`next.config.mjs` covering **every** part file — they are outside the dashboard dir, and without
+them the route works in `next dev` and fails only in production. Both the routes and that config
+read one list, `dashboard/app/lib/doc-parts.mjs`, so a new part cannot be rendered without also
+being traced. **`@stellar/stellar-sdk` must never be added to
 `serverExternalPackages`** — externalizing it makes the bundler emit a native `require()` into the
 SDK's CJS build, which requires ESM-only `@noble/hashes`, so the cron route throws
 `ERR_REQUIRE_ESM` at import time on any runtime without `require(esm)` and the indexer stops
 silently (`lastRunStatus` stays `ok`, `staleMinutes` climbs). It must stay **bundled**; full
-incident and the verification recipe are in `ARCHITECTURE.md`. The API lives as Next.js Route Handlers
+incident and the verification recipe are in `architecture/`. The API lives as Next.js Route Handlers
 (`/api/v1/protocols`, `/api/v1/coverage`, `/api/v1/protocol/[id]`, `/api/v1/health` — versioned;
 there are **no**
 unversioned paths, the
 former transitional aliases were removed and now 404, and the versioning policy lives in
-`ARCHITECTURE.md`); the dashboard's own pages read `@stenion/db`'s `Store`
+`architecture/`); the dashboard's own pages read `@stenion/db`'s `Store`
 in-process (no HTTP hop). The indexer is triggered by a secret-gated cron route
 (`POST /api/cron/run-indexer`), which an external cron-job.org job POSTs to every 5 minutes with
 `Authorization: Bearer <CRON_SECRET>`. That schedule lives in the cron-job.org dashboard, **not in
@@ -206,7 +228,8 @@ stay that way — rate limiting an authenticated internal trigger can only block
 Caching there is meaningless (it's a POST that does work). The rate limiter's counter lives in
 Postgres because serverless has no shared memory, and it **fails open**: a limiter that can 429 the
 whole API when its own query breaks is worse than no limiter. Policy, limits and the
-staleness-vs-cache reasoning live in `ARCHITECTURE.md` "Caching and rate limits" — the load-bearing
+staleness-vs-cache reasoning live in `architecture/deploy-architecture.md` "Caching and rate
+limits" — the load-bearing
 rule here is that **caching must never mask `lastRunAt`/`lastRunStatus`**, which is why the TTL is
 computed per response from the body rather than being a constant.
 
@@ -230,7 +253,7 @@ computed per response from the body rather than being a constant.
 > _rate_, which the pre-deploy estimate got wrong by computing it from developer-machine durations.
 > **Never make an RPC-load claim from local timings; measure the deployed function** (the cron
 > route returns per-target `durationMs` and `totalMs` for exactly this). Full incident in
-> `ARCHITECTURE.md`.
+> `architecture/`.
 
 > **Local hazard:** never run `next build`/`next start`/a second `next dev` against the same checkout
 > while a dev server is up — they share one `.next` and corrupt each other. Vercel builds in
@@ -240,13 +263,13 @@ computed per response from the body rather than being a constant.
 
 Oracle _manipulation_ vs staleness is **resolved and shipped** — `oracleSafety` now scores both,
 and it is part of methodology **v1**, the only version that exists (see
-[`METHODOLOGY.md`](METHODOLOGY.md) §2 and its "Current version" section). It was done by extending
+[`methodology/index.md`](methodology/index.md) §2 and its "Current version" section). It was done by extending
 an existing factor rather than adding a sixth, so the five-factor taxonomy in `core/src/types.ts`
 is unchanged.
 
 Pause/frozen-pool state is **resolved and shipped** — and resolved as a decision _not_ to score
 it. It is published as `operationalState`, a live ungraded field beside the score, on the reasoning
-in [`METHODOLOGY.md`](METHODOLOGY.md) "Operational state is published, never scored". The taxonomy
+in [`methodology/index.md`](methodology/index.md) "Operational state is published, never scored". The taxonomy
 in `core/src/types.ts` is unchanged and lending's methodology version stayed at 1, because nothing about
 what a number means changed.
 
@@ -269,9 +292,9 @@ breaking taxonomy change, so it's flagged, not resolved ad hoc.
 **Update the docs yourself at the end of a session — don't wait to be asked.** When something
 changes, update the doc that _owns_ that content, not this file:
 
-- A new/changed formula, threshold, or weight → [`METHODOLOGY.md`](METHODOLOGY.md) (and the adapter
+- A new/changed formula, threshold, or weight → [`methodology/index.md`](methodology/index.md) (and the adapter
   code, in the same change).
-- A new package, data-flow change, or deploy change → [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- A new package, data-flow change, or deploy change → [`architecture/index.md`](architecture/index.md).
 - A new adapter, or a change to how adapters are written/reviewed → [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - Something shipped, planned, skipped, or newly out of scope → [`ROADMAP.md`](ROADMAP.md).
 

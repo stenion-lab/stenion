@@ -4,6 +4,7 @@ import path from 'node:path';
 import { ExternalLink, FileWarning } from 'lucide-react';
 import { MarkdownDoc } from '../../components/markdown-doc';
 import { METHODOLOGY_SOURCE_URL } from '../lib/site';
+import { METHODOLOGY_PARTS } from '../lib/doc-parts.mjs';
 import { Reveal } from '../../components/reveal';
 
 export const metadata: Metadata = {
@@ -13,13 +14,34 @@ export const metadata: Metadata = {
 };
 
 // The methodology lives at the repo root as the single source of truth shared
-// with the adapters. We render that same file here rather than duplicating it.
-// (next.config pins outputFileTracingRoot to the repo root and includes this
-// file for the /methodology route, so it's bundled in the serverless output.)
+// with the adapters. We render those same files here rather than duplicating
+// them. (next.config pins outputFileTracingRoot to the repo root and traces
+// every part for the /methodology route, so they're in the serverless output.)
+//
+// Joined on a single newline, which is exactly the blank line that used to sit
+// between two sections of the one file. Prettier ends every part after its last
+// non-blank line, so concatenating them raw would weld a section's closing `---`
+// onto the next section's `##`; one newline puts the blank line back and the
+// parts reassemble byte-for-byte into the METHODOLOGY.md this replaced.
+//
+// One missing part fails the whole read rather than rendering a document with a
+// section silently absent — a half-rulebook that still looks complete is worse
+// than the GitHub-fallback error state.
 async function loadMethodology(): Promise<string | null> {
   try {
-    const p = path.join(process.cwd(), '..', 'METHODOLOGY.md');
-    return await readFile(p, 'utf8');
+    const parts = await Promise.all(
+      // `turbopackIgnore` because the part name is a variable now, and Turbopack's
+      // static analysis answers "unknown path" by tracing the WHOLE repo into the
+      // serverless output — a build warning, a slower deploy, and a real risk of
+      // the size limit. What actually puts these files in the bundle is the
+      // route's `outputFileTracingIncludes` entry (#96), which names every part
+      // explicitly from this same manifest; the analyser's guess was never what
+      // carried them.
+      METHODOLOGY_PARTS.map((part) =>
+        readFile(path.join(/* turbopackIgnore: true */ process.cwd(), '..', part), 'utf8'),
+      ),
+    );
+    return parts.join('\n');
   } catch {
     return null;
   }
@@ -54,7 +76,7 @@ export default async function MethodologyPage() {
 
       <Reveal delay={0.08} className="mt-12">
         {source ? (
-          <MarkdownDoc source={source} />
+          <MarkdownDoc source={source} basePath="methodology" />
         ) : (
           <div className="rounded-xl border border-danger/25 bg-danger/5 p-8 text-center">
             <FileWarning className="mx-auto h-8 w-8 text-danger" />

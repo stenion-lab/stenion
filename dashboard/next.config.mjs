@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { API_PARTS, METHODOLOGY_PARTS } from './app/lib/doc-parts.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -38,14 +39,20 @@ const nextConfig = {
   // the route loads and a full cycle scores real on-chain data.
   serverExternalPackages: ['pg'],
 
-  // The /methodology and /docs/api routes read their repo-root markdown file at
+  // The /methodology and /docs/api routes read their repo-root markdown at
   // request time (single source of truth, not duplicated). Those files live
   // outside the dashboard dir, so include each explicitly in its route's
   // serverless bundle or the read 404s on Vercel — the failure is silent in dev,
-  // where the file is simply there on disk.
+  // where the files are simply there on disk (#96).
+  //
+  // Both docs are now FOLDERS of per-topic files, and every one of them has to
+  // be listed — a part left out here renders locally and 404s in production, and
+  // the page would then serve a document with a section missing rather than
+  // failing outright. Derived from the same manifest the routes read, so the two
+  // cannot fall out of step; adding a part to doc-parts.mjs traces it here.
   outputFileTracingIncludes: {
-    '/methodology': ['../METHODOLOGY.md'],
-    '/docs/api': ['../API.md'],
+    '/methodology': METHODOLOGY_PARTS.map((part) => `../${part}`),
+    '/docs/api': API_PARTS.map((part) => `../${part}`),
   },
 };
 

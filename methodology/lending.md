@@ -1,194 +1,23 @@
-# Stenion Scoring Methodology
-
-This document is the **source of truth for how every safety factor is calculated.**
-It exists so that anyone — including the protocols being scored — can see, verify, and
-challenge the actual rules, not just the output numbers. Every formula below is extracted
-directly from the shipped code (currently [`adapters/blend.ts`](adapters/blend.ts) and
-[`adapters/kinetic.ts`](adapters/kinetic.ts)); this file is not a summary of intent, it is
-the rulebook the adapters must implement.
-
-**One formula per category, per-protocol data sources.** Every factor's formula, scale, and
-thresholds are fixed here and identical across every protocol in a category — and across
-_markets_: the three Blend pools Stenion scores run one adapter and one rulebook, differing only
-in the pool each reads. Each category owns a section below, holding its own factor list, weight
-table, worked example and version changelog; **lending** is the only one today. What legitimately
-differs per adapter is only _where the raw inputs are read on-chain_ — e.g. Blend reads a per-reserve `max_util` cap,
-while Kinetic (K2), being Aave-V3-style, has no such cap and instead anchors the same
-utilization formula to its own `OPTIMAL_UTILIZATION_RATE` (see §5). The _anchoring pattern_
-("grade against the protocol's own on-chain parameter") is the invariant; the specific
-parameter that pattern resolves to is a documented per-protocol fact, not a new threshold.
-
-If the code and this document ever disagree, that is a bug — open an issue (see
-[Disputing or changing a threshold](#disputing-or-changing-a-threshold)).
-
----
-
-## Current version
-
-Versions are **per category**, on independent counters that each start at 1, so a version number
-alone does not identify a rulebook — the category and the number together do. One row per
-category, and the changelog behind each lives in that category's own section:
-
-| Category  | Current version | Rulebook and changelog |
-| --------- | --------------- | ---------------------- |
-| `lending` | 1               | [Lending](#lending)    |
-
-**Lending, methodology v1** — the rulebook described in the [Lending](#lending) section, in full,
-including `oracleSafety` scoring both price freshness and manipulation resistance (§2), the
-minimum-size filter §4 and §5 select reserves through
-([The minimum-size filter](#the-minimum-size-filter)), and the
-[market-size floor](#the-market-size-floor) that decides whether a market is scorable at all.
-The floor is a precondition rather than a formula — it moves no number and did not bump this
-version.
-
-The rest of this section — what bumps a version, and what a boundary means for a stored score —
-is policy that applies to **every** category, not just lending.
-
-**Versioning begins here.** `methodology_version = 1` is the only version lending's rulebook
-defines, and the only one any stored row will carry. A version 2 was briefly live in the code
-— stamped onto runs between 2026-08-14 11:25 and 2026-08-18 11:30 UTC, before the rulebook was
-flattened back to v1 — and that history is discarded rather than migrated, for the same reason
-the development-era history was: it was computed under a rulebook that no longer exists, and
-nobody was downstream of it. After that discard there is no v1-versus-v2 boundary in
-`risk_scores`, and none to look for.
-
-### Earlier development history was discarded, not migrated
-
-Before this point Stenion accumulated a few weeks of scored runs during development, under
-earlier iterations of these rules. **That history was deleted rather than carried forward, and
-this is a deliberate, recorded choice rather than a silent one.** Three reasons, stated plainly:
-
-- **It contained scores computed under two known bugs**, since fixed. Those numbers were wrong
-  under their own rulebook, not merely scored under a different one.
-- **It predates the oracle robustness work** (§2), so its `oracleSafety` values measured price
-  age alone — a signal we now consider misleading rather than merely incomplete.
-- **Nobody was downstream of it.** Every row came from our own cron during development; no
-  external consumer had been built against the API, and the only reader of the history was our
-  own score chart. Marking a discontinuity in a dataset nobody had read would have been
-  bookkeeping, not disclosure.
-
-A clean history starting from a rulebook we actually stand behind is more honest than a
-marked-up one carrying forward numbers we know were wrong. **This is the last time that
-reasoning applies.** From here on, history is never deleted and never backfilled — the version
-stamp exists so a change is labeled instead.
-
-### What bumps the version, going forward
-
-**Bump when a change alters what a number means** — a factor starting or stopping measuring
-something, a threshold's anchor changing, a re-weighting, or any formula change that moves
-scores for unchanged on-chain state. **Don't bump** for a fix that makes the implementation
-match the rule already documented here (the stored scores were wrong, not scored under a
-different rulebook — say so in the changelog instead), for adding a protocol or an adapter, or
-for wording, disclosure, and presentation changes. The test is simple: if comparing an old score
-to a new one would mislead, bump; if the old score was just incorrect under this same rulebook,
-don't.
-
-### Scores across a boundary are not comparable
-
-No boundary survives in the stored data — the v2 rows above were discarded — but the machinery
-that marks one is live and tested, because the first real bump must be legible on the day it
-happens rather than built in a hurry then:
-
-- The indexer stamps `risk_scores.methodology_version` from this category's entry in
-  `METHODOLOGY_VERSIONS` ([`core/src/category.ts`](core/src/category.ts)) at write time, resolved
-  from the target's own category. An adapter has no say in the version; it only declares which
-  category it belongs to. `risk_scores.category` is stamped beside it, because every category's
-  counter starts at 1 and the pair — not the integer — identifies a rulebook.
-- The score-history chart on each protocol page **breaks the line** at a version change rather
-  than drawing through it, and the run list labels the break. Both paths are covered by fixture
-  tests, since live data cannot exercise them.
-- The version is returned on every history point and on the protocol detail from
-  `GET /api/v1/protocol/:id`. To check which rulebook produced a stored score, read that column
-  — don't infer it from the date.
-
-History is **not backfilled across a bump, and cannot be** — `risk_scores` stores only outputs
-(the score and the factor map), never the raw on-chain inputs a run was computed from, so no
-one, including us, can recompute an old row under new rules.
-
----
-
-## Ground rules (non-negotiable)
-
-1. **The same formula applies to every protocol in a category, with no exceptions.** A
-   factor's formula, its weight, and its thresholds are fixed in that category's section
-   below, in one shared place. They do not vary per protocol, per adapter, or per anything
-   else _within_ the category. **A category boundary is the one and only place a rule may
-   differ** — and it differs because the factor sets differ, not because a protocol asked:
-   `utilizationSafety` weighted 0.20 says nothing about an AMM with no borrow cap. That is a
-   different rulebook, published in full under its own heading and versioned on its own
-   counter, never lending's rules bent to fit. Two protocols in the same category are always
-   graded by the same rules.
-2. **Payment never changes a threshold or a formula.** Protocols can pay for visibility,
-   speed, or private tooling — never for a better number. A paid tier cannot move a
-   threshold, reweight a factor, or alter a curve. The _only_ thing that changes a
-   protocol's output is its own real, on-chain data.
-3. **Different protocols can and should score differently.** That is the point. What must
-   never differ is the _rule_ being applied. Blend scoring 54 and a hypothetical protocol
-   scoring 80 is a result of their data, not of two different rulebooks.
-4. **No fabricated numbers.** Where real data genuinely isn't available for a factor, the
-   score uses a clearly-flagged neutral baseline (called out explicitly below) — never an
-   invented, plausible-looking value.
-5. **AI never sets a score.** Any AI feature only explains or summarizes the numbers these
-   formulas produce. It never generates an independent risk assessment.
-
----
-
-## Score model
-
-- **Overall score: 0–100, higher = safer.** API/field name `safetyScore`.
-- **Every factor is on the same scale: 0–100, higher = safer.** Factor names end in
-  `*Safety` so a name never disagrees with its number — a `collateralSafety` of 70 means
-  well-diversified (safe), not "70% concentrated."
-- The overall score is a **weighted mean of the category's factors**, renormalized over
-  whichever factors are non-null (so a genuinely inapplicable factor doesn't drag the score
-  toward zero rather than being excluded):
-
-  ```
-  safetyScore = round( Σ(factor.value × factor.weight) / Σ(factor.weight) )
-  ```
-
-**This arithmetic is shared; the factors it averages are not.** The formula above is
-category-agnostic — it reads a value and a weight and nothing else — and it is implemented once,
-in `scoreFactors` ([`core/src/scoring.ts`](core/src/scoring.ts)), which every adapter of every
-category calls. **Which** factors exist and **what each is weighted** is per category: declared
-once in `CATEGORY_FACTORS` ([`core/src/weights.ts`](core/src/weights.ts)) and published in that
-category's own section below. So the weight table and the factor list live under
-[Lending](#lending), not here — a second category would bring its own, not edit lending's.
-
-A factor may publish a **`components`** breakdown — the sub-signals behind its value.
-Components with a numeric `value` are what the factor was computed from; components with
-a `null` value are **disclosures**: real, readable on-chain quantities we publish but
-deliberately do not grade, because scoring them would invent comparability the data does
-not support (see §2c and §2d). A null component is never missing data.
-
-One published field sits **outside** this formula entirely: `operationalState`, which reports
-which user operations a market's own contracts are currently refusing. It is not a factor, not a
-multiplier, and not an input to `safetyScore` — see
-[Operational state is published, never scored](#operational-state-is-published-never-scored) for
-why, and for why that is a decision rather than an omission.
-
----
-
 ## Lending
 
 Everything from here to
-[Operational state](#operational-state-is-published-never-scored) is **lending's rulebook and
+[Operational state](publishing-rules.md#operational-state-is-published-never-scored) is **lending's rulebook and
 lending's alone** — its version changelog, its factor weights, its worked example, and the five
 factors themselves. It is the only category Stenion publishes a rulebook for today
-(`PROTOCOL_CATEGORIES` in [`core/src/category.ts`](core/src/category.ts)), and this section is
+(`PROTOCOL_CATEGORIES` in [`core/src/category.ts`](../core/src/category.ts)), and this section is
 the shape a second one would take: its own heading, its own changelog, its own weight table, its
 own factor list. Nothing above this line is lending-specific; nothing below it may be assumed to
 hold for a category that isn't lending.
 
 **Which protocols are scored under it:** every market on the registry today — the three Blend
-pools ([`adapters/blend.ts`](adapters/blend.ts)) and Kinetic/K2
-([`adapters/kinetic.ts`](adapters/kinetic.ts)). Ground rule 1 binds all of them to what follows.
+pools ([`adapters/blend/`](../adapters/blend)) and Kinetic/K2
+([`adapters/kinetic/`](../adapters/kinetic)). Ground rule 1 binds all of them to what follows.
 
 ### Version changelog
 
 Every scored run is stamped with the rulebook version that produced it
 (`risk_scores.methodology_version`, from the `lending` entry in `METHODOLOGY_VERSIONS` in
-[`core/src/category.ts`](core/src/category.ts)), and it is surfaced on the API's protocol detail
+[`core/src/category.ts`](../core/src/category.ts)), and it is surfaced on the API's protocol detail
 and on each history point. Versions are per category and counters are independent, so this
 changelog is **lending's**; another category's v1 is a different rulebook, not an earlier one.
 Each category gets exactly one such table, in its own section. The changelog:
@@ -200,7 +29,7 @@ Each category gets exactly one such table, in its own section. The changelog:
 One row, and that is the point: v1 is where versioning starts, not where it started counting
 again. Development-era history under earlier iterations of these rules was discarded rather
 than migrated — what that was and why it was deleted is at the top of this document, along with
-what does and doesn't warrant a bump. See [Current version](#current-version).
+what does and doesn't warrant a bump. See [Current version](index.md#current-version).
 
 #### Corrections that did not bump the version
 
@@ -210,7 +39,7 @@ across them — but they are recorded here rather than left silent, because a sc
 even if no published number moved.
 
 > The entry below was verified against the development-era history that has since been
-> discarded (see [Current version](#current-version)), so its row counts are no longer
+> discarded (see [Current version](index.md#current-version)), so its row counts are no longer
 > re-checkable. It is kept as the record of a correction, not as a live claim about stored
 > data. The fix itself is in the shipped v1 rulebook.
 
@@ -229,7 +58,7 @@ what v1 means is traceable rather than assumed: "no bump required" does not mean
 required".
 
 **This section closes when the next change lands.** From that point the rule in
-[What bumps the version](#what-bumps-the-version-going-forward) applies without exception, and
+[What bumps the version](index.md#what-bumps-the-version-going-forward) applies without exception, and
 a change that alters what a number means bumps to v2.
 
 | Date (UTC)   | Amendment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -245,7 +74,7 @@ appearing as an unexplained step in a chart.
 ### Factor weights
 
 Lending's weights, and lending's only. This table is the published face of
-`CATEGORY_FACTORS.lending` in [`core/src/weights.ts`](core/src/weights.ts), which is where the
+`CATEGORY_FACTORS.lending` in [`core/src/weights.ts`](../core/src/weights.ts), which is where the
 adapters read them from — neither adapter contains a weight of its own, and
 `core/src/scoring.test.ts` parses this table and fails if the two disagree in either direction.
 
@@ -270,7 +99,7 @@ adapters read them from — neither adapter contains a weight of its own, and
 > **Oracle robustness was folded into `oracleSafety` rather than given its own factor**,
 > partly for this reason: a sixth member would have forced a redistribution across all five,
 > layering a second unanchored judgment call on top of one already flagged as unanchored. The
-> taxonomy in [`core/src/types.ts`](core/src/types.ts) stays at five factors.
+> taxonomy in [`core/src/types.ts`](../core/src/types.ts) stays at five factors.
 
 ---
 
@@ -343,7 +172,7 @@ many reserves it has, not against an arbitrary constant.
 > misleading one, so this factor takes the binding constraint of freshness and manipulation
 > resistance. Earlier development-era scores did measure age alone; that history was
 > discarded rather than carried forward, and no stored row was computed that way — see
-> [Current version](#current-version).
+> [Current version](index.md#current-version).
 
 **What it measures:** whether the prices this pool actually runs on can be trusted. Two
 things must both hold, and the factor takes **the binding constraint of the two** — a
@@ -407,7 +236,7 @@ numbers are K2's, and the binding one is the one that governs.
 > incentive for a platform protocols are ranked by, so the anchor is capped. There is no
 > external framework fixing the cap at one hour; it is open to challenge like any
 > threshold here. It lives in one place, `STALE_CEILING_SECONDS` in
-> [`core/src/scoring.ts`](core/src/scoring.ts).
+> [`core/src/scoring.ts`](../core/src/scoring.ts).
 
 ##### 2b. `deviationBound` — can a single update move the price arbitrarily far?
 
@@ -498,7 +327,7 @@ a precondition hiding inside it, which this section makes explicit:
 This is the [market-size floor](#the-market-size-floor) one factor down, and it has the same
 shape: a precondition on what gets scored at all, rather than a rule about how to score it.
 Markets excluded by it are published in
-[`dashboard/app/lib/coverage.ts`](dashboard/app/lib/coverage.ts) as `oracle-not-gradable`,
+[`dashboard/app/lib/coverage.ts`](../dashboard/app/lib/coverage.ts) as `oracle-not-gradable`,
 with a per-market reason and a date — never as a `protocols` row, and never with a numeral.
 
 **Where the line falls today.** Blend's oracle-aggregator publishes all three reads
@@ -621,7 +450,7 @@ band where a reader discounts it. Ground rule 4 forbids both.
 formula. Every market Stenion scores runs on an aggregator, so `oracleSafety` is computed
 byte-identically before and after; what changed is that a precondition already implicit in §2
 is now written down and enforced in code
-([`ORACLE_GRADING_READS`](adapters/blend.ts) and `oracleNotGradable`), instead of surfacing as
+([`ORACLE_GRADING_READS`](../adapters/blend/fetch.ts) and `oracleNotGradable`), instead of surfacing as
 an unexplained `HostError` from whichever read happened to run first. Same reasoning, and the
 same conclusion, as the market-size floor.
 
@@ -696,7 +525,7 @@ prices, lastprice, last_timestamp, history_retention_period, …`. Earlier Refle
   on three grounds: order books are trivially spoofable with walls that are never hit; it
   only applies to assets priced off the Stellar DEX; and it cannot be validated
   retroactively, because the exploited market has since been rebuilt. Tracked as a
-  candidate in [`ROADMAP.md`](ROADMAP.md) rather than shipped on intuition.
+  candidate in [`ROADMAP.md`](../ROADMAP.md) rather than shipped on intuition.
 
 ##### What this factor would have said on 2026-02-22
 
@@ -946,7 +775,7 @@ anyway, because that is precisely where a "cannot assess" could quietly become a
 > **It is recorded, not fixed.** Changing it — sizing leg A relative to the pool, capping it,
 > or making the legs AND rather than OR below some pool size — moves published numbers on a
 > live entry, and is a threshold change under the same review bar as any other (see
-> [Disputing or changing a threshold](#disputing-or-changing-a-threshold)). It is equally
+> [Disputing or changing a threshold](publishing-rules.md#disputing-or-changing-a-threshold)). It is equally
 > arguable that the current behaviour is correct: `min_collateral` is the pool's own statement
 > of the smallest position worth liquidating, and a $1,097 reserve at 90% utilization is a real
 > reserve with real depositors, not the $3.00 dust the filter was built to exclude. What is not
@@ -1065,7 +894,7 @@ sounds like a meaningfulness test while being a scorability test is worse than n
 > the store can express "this market is not scorable" as distinct from "this market scored 0",
 > so a registered market that drained below the floor would keep publishing a number today.
 > Closing that needs a distinct not-scorable outcome through `Adapter` and `RunRecord`; it is
-> filed in [`ROADMAP.md`](ROADMAP.md) rather than implied to exist here.
+> filed in [`ROADMAP.md`](../ROADMAP.md) rather than implied to exist here.
 
 **This does not bump lending's methodology version.** It moves no published number: every market
 Stenion currently scores — both Blend pools and K2's primary market — clears the floor, so no
@@ -1127,194 +956,3 @@ closest to its line.
 >    that reserve's exact kink. Revisit if K2 exposes a readable per-reserve optimal-util.
 
 ---
-
-## Operational state is published, never scored
-
-**The decision, up front: pause/frozen state is a published field beside the score, and it is
-deliberately not a factor, not a multiplier, and not any input to a number.** It was decided
-this way on 2026-08-25 (issue #15) after reading both protocols' contracts, and this section
-exists so it is not re-litigated by the next person who notices a paused pool with an unchanged
-score.
-
-Both adapters had always read a pause signal — Blend's `PoolConfig.status`, K2's
-`router.is_paused()` — and neither had ever used it. That could not stay true indefinitely:
-every adapter written while it stayed unresolved would have to be retrofitted later.
-
-### What each protocol actually means by "paused"
-
-Read from the contracts, not from the documentation — the published docs name Blend's states but
-publish no numeric mapping, and the mapping circulating in search results is partial and partly
-wrong.
-
-**Blend V2** gates in `require_action_allowed` (`pool/src/pool/pool.rs`), which is the entire
-rule:
-
-```rust
-if (status > 1 && (action == 4 || action == 9))     // Borrow, DeleteLiquidationAuction
-|| (status > 3 && (action == 2 || action == 0))     // SupplyCollateral, Supply
-{ panic!(InvalidPoolStatus) }
-```
-
-`RequestType` numbering is from `pool/src/pool/actions.rs`; the setter paths are
-`execute_set_pool_status` (admin) and `execute_update_pool_status` (permissionless) in
-`pool/src/pool/status.rs`.
-
-| `status` | Blend's name | Borrow | Supply | Withdraw / Repay / liquidation fills | Who can set it                                                                   |
-| -------- | ------------ | ------ | ------ | ------------------------------------ | -------------------------------------------------------------------------------- |
-| 0        | Admin Active | yes    | yes    | yes                                  | admin only (needs the backstop threshold met and Q4W < 50%)                      |
-| 1        | Active       | yes    | yes    | yes                                  | permissionless only (backstop healthy)                                           |
-| 2        | Admin On-Ice | **no** | yes    | yes                                  | admin only                                                                       |
-| 3        | On-Ice       | **no** | yes    | yes                                  | **either** — admin, or automatically at Q4W ≥ 30% / below the backstop threshold |
-| 4        | Admin Frozen | **no** | **no** | yes                                  | admin only; supersedes the backstop, which cannot move it                        |
-| 5        | Frozen       | **no** | **no** | yes                                  | permissionless only — automatically at Q4W ≥ 60% (≥ 75% from status 2)           |
-| 6        | Setup        | **no** | **no** | yes                                  | initialization only; supersedes everything                                       |
-
-**Blend never blocks a withdrawal or a repayment at any status.** The only user-facing action
-blocked below the supply threshold is _cancelling_ an in-flight liquidation auction, which is a
-wind-down-safely posture rather than a restriction on depositors.
-
-**K2 (Kinetic)** has two layers. `storage::is_paused` is checked at the top of `validate_supply`,
-`validate_withdraw`, `validate_borrow`, `validate_repay` and `validate_liquidation`, and again in
-the flash-loan and two-step liquidation entry points — so **a paused K2 halts everything,
-withdrawals included, and deposited capital cannot leave.** Separately, each reserve carries its
-own gating flags in the `ReserveConfiguration` bitmap it already publishes its decimals in
-(`contracts/shared/src/utils.rs`, bits 50–53): `active`, `frozen`, `borrowing_enabled`, `paused`.
-A cleared `active` or a set `paused` blocks every operation on that reserve; `frozen` blocks
-supplying and borrowing while leaving withdrawals open; a cleared `borrowing_enabled` blocks only
-borrowing.
-
-### The shared representation
-
-Because those two vocabularies do not map onto each other, the published state is named by **what
-is blocked**, which is the one axis on which the protocols are genuinely comparable:
-
-| Level               | Meaning                                                        | Blend         | K2                                                  |
-| ------------------- | -------------------------------------------------------------- | ------------- | --------------------------------------------------- |
-| `active`            | nothing restricted                                             | status 0, 1   | not paused, every reserve open                      |
-| `borrowingDisabled` | cannot borrow; supply and exit both work                       | status 2, 3   | reserve `borrowing_enabled = false`                 |
-| `entryDisabled`     | cannot borrow or supply; **existing positions can still exit** | status 4, 5   | reserve `frozen`                                    |
-| `exitDisabled`      | **cannot withdraw** — capital cannot leave                     | _unreachable_ | `router.is_paused()`, or reserve `paused`/`!active` |
-| `notOperational`    | the market was never opened                                    | status 6      | _no analogue_                                       |
-
-Where a protocol gates per reserve, the **most restricted** reading is published — the same
-worst-reserve convention §2, §4 and §5 use, for the same reason. Alongside the level: the
-protocol's own reading verbatim (`PoolConfig.status = 4`), the exact operations blocked, when it
-was read, and whether the value is one only an admin could have set. That last field is
-`indeterminate` for Blend's status 3, because `execute_set_pool_status` accepts it too — reading
-even/odd as "who did this" would be right six times in seven and wrong on the one value where it
-matters.
-
-`notOperational` is reachable in principle and not in practice: every Setup pool in the
-2026-08-22 factory survey held exactly $0.00 and is already excluded by
-[the market-size floor](#the-market-size-floor).
-
-### Why it is not scored
-
-Three options were weighed — a sixth factor, a multiplier on the overall score, and a published
-flag. The flag was chosen, on four grounds:
-
-1. **No on-chain datum resolves the ambiguity.** A pause can be an admin containing a threat or an
-   admin abandoning a market, and neither protocol's state carries a reason. Distinguishing them
-   needs off-chain announcements, which adapters may not read. A "context-dependent" factor with
-   nothing to condition on is a flat penalty in costume, and any magnitude for it would be
-   invented — this document's standard is that a threshold is anchored to a protocol's own
-   parameter or labelled an unvalidated judgment call, and there is no anchor here at all.
-2. **The one axis clean enough to score does not exist on both protocols.** The strongest scored
-   variant was not a sixth factor but folding `exitDisabled` into
-   [`liquiditySafety`](#4-liquiditysafety--free-liquidity-depth-weight-015): that factor is
-   _defined_ as the withdrawal cushion, and a cushion you are contractually barred from drawing on
-   is zero by definition rather than by judgment — no invented magnitude required. It was rejected
-   anyway, because `exitDisabled` is structurally unreachable on Blend. A rule that is live code on
-   one adapter and dead code on the other satisfies ground rule 1 in form only. **Recorded here so
-   it is not re-proposed as the obvious fix.**
-3. **A scored rule would have shipped untested.** Every registered market was fully operational
-   when this landed — Blend status 1, YieldBlox status 0, K2 unpaused with all four reserves open
-   — so the before/after comparison a scored change requires would have compared each number
-   against itself. What a factor _would_ have done is worse than nothing: "not paused" scores 100,
-   so a sixth factor at weight `w` raises every active protocol's score by `(100 − score) × w`,
-   handing Blend, K2 and YieldBlox 5–11 free points for the ordinary state. That is the
-   five-way redistribution [the weights note](#factor-weights) already declined once.
-4. **A multiplier would break the score model.** `safetyScore` is one published line, and this
-   document's worked example spells the arithmetic out. A client that fetches `factors` and
-   reproduces the score would stop getting the same number — a verifiability platform whose
-   published factors no longer reconstruct its published score has traded away more than the
-   change buys.
-
-There is also no decay problem, which both scored options have and neither answers: snapping back
-on unpause puts a step in the history chart that is not a change in risk, and a cooldown invents a
-time constant from nothing. A published state is a live reading — correct at every instant, with
-nothing to recover from.
-
-**What this costs, stated plainly.** A reader who looks only at the number is not protected by the
-flag. That is why the flag is a first-class field on both the leaderboard and the detail response
-rather than a footnote, and is rendered beside the name and score everywhere either appears — the
-same treatment, for the same reason, as `deployedOn`. If it ever stops being rendered there, the
-decision not to score has quietly become a decision to hide.
-
-**No version bump.** Nothing here changes a formula, a threshold or a weight, and no stored score
-moves, so lending's methodology version stays at 1. That the state cannot reach a factor is enforced
-rather than intended: `adapters/blend.test.ts` and `adapters/kinetic.test.ts` each assert a
-byte-identical factor map across every restricted state their protocol can be in. If pause state
-ever moves a number, those tests fail before the change ships.
-
----
-
-## Findings are published, not scored — and how they must be written
-
-Verifiable observations we can't or won't grade go in the protocol page's Findings section
-(`dashboard/app/lib/protocol-notes.ts`), never into a factor. **Nothing there is read by any
-scoring path**, and a note — favourable or not — can never move a number.
-
-**Findings are the STATIC half of ungraded publication.** They are hand-written and reviewed in a
-PR, which is right for an observation someone had to go and establish, and wrong for a reading
-that changes every five minutes. The live half is
-[operational state](#operational-state-is-published-never-scored): measured every cycle, published
-as a typed field, and equally never graded. A new ungraded observation belongs in whichever of the
-two matches how it is obtained — never in a factor, and never invented as a third mechanism.
-
-**A note must survive the history it was drawn from.** Twice now a Findings note has outlived
-the stored runs behind it: once when the development-era history was discarded, and again when
-the briefly-live v2 rows were. Score history is not an archive — it is discarded across a
-rulebook change and cannot be recomputed, because `risk_scores` keeps only outputs. A note
-written as "our history shows X" therefore decays into an unverifiable claim on a page whose
-entire pitch is that you don't have to trust us.
-
-So every note citing our own observations follows the same form:
-
-1. **Cite a closed window, with both ends stated.** "Between 2026-08-11 18:16 and 2026-08-18
-   15:55 UTC, 1,469 runs" — not "93% of runs", which silently means something different every
-   time the cron fires. A reader re-running the query later must be able to tell that a
-   different number is a later window, not a contradiction.
-2. **Say the counts are a snapshot of that window** and do not update.
-3. **Phrase the underlying claim so it stays checkable from chain after the history is gone.**
-   Our runs are evidence that a condition _persisted_; the condition itself must be one anyone
-   can observe today, directly from the contracts. If the only support for a claim is rows in
-   our database, it is not a finding — it is an assertion.
-4. **Give the exact verification steps** — contract, method, field, and what to compare against.
-   If we can't say how a reader would check it themselves, it doesn't go in.
-5. **Claim only what was measured.** Where a sub-signal wasn't recorded separately, say so and
-   scope the claim to the runs that carry it, rather than generalising across all of them.
-
----
-
-## Disputing or changing a threshold
-
-Every number in this document is meant to be challengeable — especially the ones labeled
-"unvalidated judgment call." If you believe a threshold, weight, or formula is wrong (including if
-you are a protocol being scored):
-
-1. **Open a GitHub issue** against this repository describing the specific threshold/formula
-   and why you think it's wrong. Anchor your argument to something external where possible (a
-   protocol's own on-chain parameter, a published risk framework, observed data) rather than
-   preference.
-2. **Or open a pull request** editing this file directly with the proposed change and its
-   justification. A change to `METHODOLOGY.md` **must** be accompanied by the matching change
-   to the adapter code (and vice versa) — the two are not allowed to drift.
-3. **Maintainer review is required, at the same bar as adapter code changes.** A methodology
-   change affects every protocol's number, so it is reviewed at least as carefully as a code
-   change — not merged on preference, and never merged because a scored party requested it.
-   Per the ground rules above, **no change is ever accepted in exchange for payment.**
-
-Changes that alter what a factor _means_ (e.g. adding or removing a factor) are breaking
-changes to the shared taxonomy in `core/src/types.ts` and are held to a higher bar again —
-they affect every adapter at once.

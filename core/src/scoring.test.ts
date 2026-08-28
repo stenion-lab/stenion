@@ -61,11 +61,26 @@ function repoFile(name: string): string {
   }
 }
 
-const METHODOLOGY = repoFile('METHODOLOGY.md');
+/**
+ * One category's rulebook file.
+ *
+ * METHODOLOGY.md is a FOLDER now — #77's per-category sections became
+ * per-category files — and a category's file is named for the category:
+ * `lending` lives in `methodology/lending.md`. Reading only that file rather
+ * than the whole folder is the same scoping the section parser below already
+ * did; it just starts one level up now, so a second category cannot be read
+ * into scope by accident at all.
+ */
+function methodologyFile(category: ProtocolCategory): string {
+  return repoFile(`methodology/${category}.md`);
+}
+
+/** Lending's rulebook, for the assertions below that read it as one document. */
+const LENDING_METHODOLOGY = methodologyFile('lending');
 
 /**
- * The slice of METHODOLOGY.md belonging to one category: from its `## <Label>`
- * heading down to the next heading of the same level.
+ * The slice of a category's methodology file belonging to that category: from
+ * its `## <Label>` heading down to the next heading of the same level.
  *
  * WHY THE PARSERS BELOW ARE SCOPED AND NO LONGER READ THE WHOLE FILE. The
  * document used to describe exactly one rulebook, so "the weight table" and
@@ -85,11 +100,11 @@ const METHODOLOGY = repoFile('METHODOLOGY.md');
  */
 function docCategorySection(category: ProtocolCategory): string {
   const heading = `## ${CATEGORY_FACTORS[category].label}`;
-  const lines = METHODOLOGY.split('\n');
+  const lines = methodologyFile(category).split('\n');
   const start = lines.findIndex((l) => l.trimEnd() === heading);
   assert.ok(
     start >= 0,
-    `METHODOLOGY.md has no "${heading}" section. Every category in ` +
+    `methodology/${category}.md has no "${heading}" section. Every category in ` +
       `PROTOCOL_CATEGORIES needs one — a category with no published rulebook is ` +
       `a score nobody outside can check.`,
   );
@@ -387,8 +402,8 @@ describe('freshnessWindow', () => {
   it('is documented at 3600s and stays there', () => {
     assert.equal(STALE_CEILING_SECONDS, 3600);
     assert.ok(
-      METHODOLOGY.includes('3600'),
-      'METHODOLOGY.md should still document the 3600s stale ceiling',
+      LENDING_METHODOLOGY.includes('3600'),
+      'methodology/lending.md should still document the 3600s stale ceiling',
     );
   });
 
@@ -542,8 +557,10 @@ describe('sizeReserves — the minimum-size filter (METHODOLOGY.md §4/§5)', ()
     // Reading the doc rather than restating its number, for the reason at the
     // top of this file: a test that hardcodes the threshold is a third copy to
     // keep in sync, not a guard against drift.
-    const match = METHODOLOGY.match(/([\d.]+)%\s+of\s+the\s+pool['’]s\s+own\s+total\s+supplied/i);
-    assert.ok(match, 'could not find the minimum-size threshold in METHODOLOGY.md §4');
+    const match = LENDING_METHODOLOGY.match(
+      /([\d.]+)%\s+of\s+the\s+pool['’]s\s+own\s+total\s+supplied/i,
+    );
+    assert.ok(match, 'could not find the minimum-size threshold in methodology/lending.md §4');
     assert.equal(Number(match[1]) / 100, MIN_RESERVE_POOL_SHARE);
   });
 });

@@ -40,7 +40,7 @@ commitment — priorities shift as protocols launch and as the project finds fun
   flags are now read too, out of the bitmap the adapter already fetched for decimals, so a market
   open in USDC and halted in PYUSD reports the halt. Full reasoning, including the two scored
   designs that were rejected and why, in
-  [`METHODOLOGY.md`](METHODOLOGY.md#operational-state-is-published-never-scored).
+  [`methodology/publishing-rules.md`](methodology/publishing-rules.md#operational-state-is-published-never-scored).
   `ADAPTER_INTERFACE_VERSION` is now **2**: `operationalState(raw)` is required of every adapter.
 
 - **Multi-pool Blend targeting.** `BlendAdapter` takes a `BlendPool` config — slug, display name,
@@ -65,10 +65,10 @@ commitment — priorities shift as protocols launch and as the project finds fun
 
 - **The five-factor `*Safety` model** — collateral concentration, oracle trustworthiness, admin-key
   control, liquidity depth, utilization headroom — with a fully public, challengeable rulebook in
-  [`METHODOLOGY.md`](METHODOLOGY.md).
+  [`methodology/index.md`](methodology/index.md).
 - **Two size floors, both published.** The reserve-level
-  [minimum-size filter](METHODOLOGY.md#the-minimum-size-filter) decides which reserves may set
-  §4/§5's number; the [market-size floor](METHODOLOGY.md#the-market-size-floor) decides whether a
+  [minimum-size filter](methodology/lending.md#the-minimum-size-filter) decides which reserves may set
+  §4/§5's number; the [market-size floor](methodology/lending.md#the-market-size-floor) decides whether a
   market is scorable at all. They are the same idea at two scales — a size below which a number
   stops carrying information — and the second exists because an empty market does not fail, it
   publishes **0**, in the danger band, meaning the opposite of what is true. Neither moved a
@@ -102,7 +102,7 @@ commitment — priorities shift as protocols launch and as the project finds fun
   (~20 minutes), with a recovery message when it comes back. Failures are **louder and rarer, not
   hidden**: a run that ultimately fails is still recorded as `failed`. The consecutive-failure
   streak is derived from `risk_scores` rather than stored in a counter, so it needs no new table and
-  cannot disagree with the history it describes. See [`ARCHITECTURE.md`](ARCHITECTURE.md).
+  cannot disagree with the history it describes. See [`architecture/index.md`](architecture/index.md).
 - **A public freshness endpoint — `GET /api/v1/health`.** The failure-alerting above covers an
   adapter failing repeatedly; it cannot cover the indexer not running at all, because nothing runs
   to notice. There was previously no way to tell the difference short of querying Neon or eyeballing
@@ -115,8 +115,8 @@ commitment — priorities shift as protocols launch and as the project finds fun
   an adapter failing every five minutes as perpetually fresh. Needed **no schema change**: it reuses
   the same two LATERAL subqueries the leaderboard already runs, one query, no fan-out. Thresholds
   are configurable (`STENION_HEALTH_STALE_MINUTES`, default 30) and sit above the alert threshold so
-  the webhook fires before the monitor goes red. See [`ARCHITECTURE.md`](ARCHITECTURE.md).
-- **Public API documentation.** [`API.md`](API.md), rendered on the site at `/docs/api`. Until now
+  the webhook fires before the monitor goes red. See [`architecture/index.md`](architecture/index.md).
+- **Public API documentation.** [`api-docs/index.md`](api-docs/index.md), rendered on the site at `/docs/api`. Until now
   the only way to learn the contract was reading the route handlers on GitHub, which is a barrier
   for exactly the wallet-integrator audience the API exists for. Covers every endpoint with live
   captured examples, the versioning commitment (additive stays on `v1`, breaking gets a `v2`), the
@@ -213,7 +213,7 @@ commitment — priorities shift as protocols launch and as the project finds fun
   registry filtered to those entries.
 
 - **The full stack:** on-chain adapters → indexer → Postgres → API → dashboard, deployed as a single
-  Vercel project with external (cron-job.org) scheduling. See [`ARCHITECTURE.md`](ARCHITECTURE.md).
+  Vercel project with external (cron-job.org) scheduling. See [`architecture/index.md`](architecture/index.md).
 
 ## Planned
 
@@ -257,7 +257,7 @@ Roughly in priority order, but not committed to dates:
   `routerId`, exactly as `BlendAdapter` took a `poolId` before the multi-pool change, so
   generalising it to a `KineticMarket` config would be the same shape of work and is available the
   day a market qualifies. It is **not built**, because neither additional market clears the
-  [market-size floor](METHODOLOGY.md#the-market-size-floor) and building it now would be dead code
+  [market-size floor](methodology/lending.md#the-market-size-floor) and building it now would be dead code
   guarding an empty list.
 
   **What K2's own market types turned out to be**, since the docs and the chain do not agree on
@@ -279,14 +279,14 @@ Roughly in priority order, but not committed to dates:
     was read, not a finding that no such thing exists.
 
 - **A not-scorable run outcome, distinct from a score of 0.** The
-  [market-size floor](METHODOLOGY.md#the-market-size-floor) is currently enforced **only by the
+  [market-size floor](methodology/lending.md#the-market-size-floor) is currently enforced **only by the
   decision not to register a market below it** — nothing in `Adapter`, the indexer or `RunRecord`
   can express "this market is not scorable" as distinct from "this market scored 0". So a
   registered market that drained below the floor would keep publishing a number computed from five
   can't-assess branches, which is the exact failure the floor is written against.
 
   The representation already exists at the far end: `safetyScore: null` is the never-scored state,
-  documented in [`API.md`](API.md) and rendered as an em dash rather than a zero. What is missing is
+  documented in [`api-docs/index.md`](api-docs/index.md) and rendered as an em dash rather than a zero. What is missing is
   a path to reach it deliberately. That is a third `RunRecord` status alongside `ok`/`failed` — and
   a `failed` row is the wrong home for it, because a market that is empty has not failed: the
   adapter read it perfectly and the answer is that there is nothing to score. A new status touches
@@ -299,7 +299,7 @@ Roughly in priority order, but not committed to dates:
   inconsistency visible rather than creating it. Renaming isn't cosmetic: `id: 'kinetic'` is the
   `protocols` primary key, the `risk_scores` foreign key, the public URL `/protocol/kinetic`, and
   the `GET /api/v1/protocol/:id` path any external consumer has hardcoded. Changing the slug is a
-  breaking API change (a `v2` under the versioning policy in [`ARCHITECTURE.md`](ARCHITECTURE.md));
+  breaking API change (a `v2` under the versioning policy in [`architecture/index.md`](architecture/index.md));
   changing only the display `name` is free and additive. Almost certainly the latter, but it should
   be a decision rather than a drift.
 - **Per-factor history.** `risk_scores` stores the full factor map on every row, so the data is
@@ -317,7 +317,7 @@ Roughly in priority order, but not committed to dates:
   Kinetic (7.7–10.5s) and YieldBlox (8.1–12.5s), both already live**. Registering a pool could
   silently fail protocols that worked the day before. (Those durations are developer-machine
   figures, which is what was known at the time. The deployed function has since been measured at
-  2.3–6.1s per target — see [`ARCHITECTURE.md`](ARCHITECTURE.md) — so the _margin_ was wider than it
+  2.3–6.1s per target — see [`architecture/index.md`](architecture/index.md) — so the _margin_ was wider than it
   looked, but the shape of the bug was not: a deadline that shrinks as the registry grows is wrong
   whatever the constants happen to be.) The two obvious fixes both fail: the budget
   cannot be raised past Vercel Hobby's `maxDuration = 60`, and lowering the attempt timeout moves the
@@ -348,7 +348,7 @@ Roughly in priority order, but not committed to dates:
   **0 failures in 102 pre-deploy target-runs, then 4 of 8 cycles for Blend in a clean post-deploy
   window.** Shipped concurrency was reverted to **1** the same day, with
   `STENION_ATTEMPT_TIMEOUT_MS` lowered 15s → 10s alongside so a single-worker cycle stays feasible to
-  four targets. Full incident, numbers and reasoning in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+  four targets. Full incident, numbers and reasoning in [`architecture/index.md`](architecture/index.md).
 
   The durable lesson, and the reason the incident record is kept: **measure the deployed function;
   never compute an RPC-load claim from developer-machine timings.**
@@ -428,7 +428,7 @@ Roughly in priority order, but not committed to dates:
     retroactively because the exploited market has since been rebuilt. Wanted, not yet shippable on
     a defensible anchor. (Several other candidates — TWAP, provider identity, source counting, and a
     Stenion-computed deviation — were investigated and **rejected**; the reasoning is recorded in
-    [`METHODOLOGY.md`](METHODOLOGY.md) §2 so they aren't re-proposed.)
+    [`methodology/index.md`](methodology/index.md) §2 so they aren't re-proposed.)
   - **Beyond lending: a taxonomy per protocol category.** The five `*Safety` factors are
     lending-specific by design — utilization against a borrow cap and liquidity headroom for
     withdrawals don't mean anything for an AMM. Scoring other categories means designing a taxonomy
@@ -571,5 +571,5 @@ part of the discipline, not a failure. Four notable cases:
   To verify: read the instance storage of `CCA2ZJP5…` via Soroban RPC `getLedgerEntries` — `METADATA`
   names it and `["AssetStrategySet",0]` gives the strategy set — then read `Config.pool` out of each
   strategy's instance storage and compare against the pool ids in
-  [`adapters/blend.ts`](adapters/blend.ts). `fetch_total_managed_funds` on the vault gives the
+  [`adapters/blend/`](adapters/blend). `fetch_total_managed_funds` on the vault gives the
   balance.
