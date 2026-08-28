@@ -10,33 +10,35 @@ curl https://stenion.vercel.app/api/v1/protocol/blend
 
 **Response** `200 OK`
 
-> `history` is truncated to 3 entries below for readability. The live response returns up to **50**
-> rows, newest first. Everything else is verbatim.
+> `history` is truncated to **one** entry below. The live response returns up to **50** rows,
+> newest first, and every `ok` one carries a `factors` object of exactly the shape shown here —
+> which is why one is shown in full rather than three with it cut out. Everything else is verbatim.
 
 ```json
 {
   "id": "blend",
   "name": "Blend",
   "chain": "stellar",
+  "category": "lending",
   "adapter": "BlendAdapter",
   "logo": "/assets/protocols/blend.svg",
   "contractId": "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD",
   "site": "https://www.blend.capital",
   "docs": "https://docs.blend.capital",
   "deployedOn": null,
-  "safetyScore": 51,
-  "computedAt": "2026-08-25T18:05:07.129Z",
+  "safetyScore": 49,
+  "computedAt": "2026-08-28T12:25:19.635Z",
   "factors": {
     "oracleSafety": {
-      "value": 99,
-      "detail": "all 3 reserves score the same — 307s old (fresh<300s, dead>900s); all reserves have a deviation bound",
+      "value": 97,
+      "detail": "all 3 reserves score the same — 319s old (fresh<300s, dead>900s); all reserves have a deviation bound",
       "weight": 0.25,
       "components": [
         {
           "id": "priceFreshness",
           "label": "Price freshness",
-          "value": 99,
-          "detail": "all 3 reserves score the same — 307s old (fresh<300s, dead>900s); anchored to the aggregator's own resolution and max_age (900s)"
+          "value": 97,
+          "detail": "all 3 reserves score the same — 319s old (fresh<300s, dead>900s); anchored to the aggregator's own resolution and max_age (900s)"
         },
         {
           "id": "deviationBound",
@@ -48,7 +50,7 @@ curl https://stenion.vercel.app/api/v1/protocol/blend
           "id": "priceAges",
           "label": "Price age by feed (not scored)",
           "value": null,
-          "detail": "Other:XLM 307s, Other:USDC 307s, Other:EURC 307s — all 3 within the protocol's own 900s staleness limit. Reported, not graded: priceFreshness already scores the worst of these."
+          "detail": "Other:XLM 319s, Other:USDC 319s, Other:EURC 319s — all 3 within the protocol's own 900s staleness limit. Reported, not graded: priceFreshness already scores the worst of these."
         },
         {
           "id": "deviationTightness",
@@ -64,23 +66,23 @@ curl https://stenion.vercel.app/api/v1/protocol/blend
       "weight": 0.2
     },
     "liquiditySafety": {
-      "value": 21,
-      "detail": "worst reserve (CCW67T…) has 21% of supply as free liquidity",
+      "value": 20,
+      "detail": "worst reserve (CCW67T…) has 20% of supply as free liquidity",
       "weight": 0.15
     },
     "collateralSafety": {
-      "value": 64,
-      "detail": "top reserve holds 70% of supplied value across 3 reserves (HHI 0.57)",
+      "value": 58,
+      "detail": "top reserve holds 74% of supplied value across 3 reserves (HHI 0.61)",
       "weight": 0.2
     },
     "utilizationSafety": {
-      "value": 12,
-      "detail": "worst reserve (CCW67T…) at 79% util vs 90% cap",
+      "value": 11,
+      "detail": "worst reserve (CCW67T…) at 80% util vs 90% cap",
       "weight": 0.2
     }
   },
   "operationalState": {
-    "asOf": "2026-08-25T18:05:07.000Z",
+    "asOf": "2026-08-28T12:25:19.000Z",
     "level": "active",
     "detail": "pool status 1 (Active) — all operations available.",
     "origin": "protocol",
@@ -88,29 +90,68 @@ curl https://stenion.vercel.app/api/v1/protocol/blend
     "blocked": []
   },
   "methodologyVersion": 1,
-  "lastRunAt": "2026-08-25T18:05:04.178Z",
+  "lastRunAt": "2026-08-28T12:25:17.171Z",
   "lastRunStatus": "ok",
   "history": [
     {
       "status": "ok",
-      "safetyScore": 51,
+      "safetyScore": 49,
       "methodologyVersion": 1,
-      "computedAt": "2026-08-25T18:05:07.129Z",
-      "runAt": "2026-08-25T18:05:04.178Z"
-    },
-    {
-      "status": "ok",
-      "safetyScore": 51,
-      "methodologyVersion": 1,
-      "computedAt": "2026-08-25T18:00:10.167Z",
-      "runAt": "2026-08-25T18:00:07.049Z"
-    },
-    {
-      "status": "ok",
-      "safetyScore": 51,
-      "methodologyVersion": 1,
-      "computedAt": "2026-08-25T17:55:07.015Z",
-      "runAt": "2026-08-25T17:55:04.082Z"
+      "factors": {
+        "oracleSafety": {
+          "value": 97,
+          "detail": "all 3 reserves score the same — 319s old (fresh<300s, dead>900s); all reserves have a deviation bound",
+          "weight": 0.25,
+          "components": [
+            {
+              "id": "priceFreshness",
+              "label": "Price freshness",
+              "value": 97,
+              "detail": "all 3 reserves score the same — 319s old (fresh<300s, dead>900s); anchored to the aggregator's own resolution and max_age (900s)"
+            },
+            {
+              "id": "deviationBound",
+              "label": "Deviation bound",
+              "value": 100,
+              "detail": "all 3 reserves score the same — CAS3J7… bounded at 60% per 300s step; CCW67T… bounded at 20% per 300s step; CDTKPW… bounded at 20% per 300s step"
+            },
+            {
+              "id": "priceAges",
+              "label": "Price age by feed (not scored)",
+              "value": null,
+              "detail": "Other:XLM 319s, Other:USDC 319s, Other:EURC 319s — all 3 within the protocol's own 900s staleness limit. Reported, not graded: priceFreshness already scores the worst of these."
+            },
+            {
+              "id": "deviationTightness",
+              "label": "Bound tightness (not scored)",
+              "value": null,
+              "detail": "per-reserve max_dev: CAS3J7… 60%, CCW67T… 20%, CDTKPW… 20%. Measured against the previous upstream record, so this bounds movement per publish interval. Reported, not graded — see METHODOLOGY.md §2."
+            }
+          ]
+        },
+        "adminKeySafety": {
+          "value": 40,
+          "detail": "single-key admin (1 signer(s), high-threshold 0), 0 op(s) in 30d",
+          "weight": 0.2
+        },
+        "liquiditySafety": {
+          "value": 20,
+          "detail": "worst reserve (CCW67T…) has 20% of supply as free liquidity",
+          "weight": 0.15
+        },
+        "collateralSafety": {
+          "value": 58,
+          "detail": "top reserve holds 74% of supplied value across 3 reserves (HHI 0.61)",
+          "weight": 0.2
+        },
+        "utilizationSafety": {
+          "value": 11,
+          "detail": "worst reserve (CCW67T…) at 80% util vs 90% cap",
+          "weight": 0.2
+        }
+      },
+      "computedAt": "2026-08-28T12:25:19.635Z",
+      "runAt": "2026-08-28T12:25:17.171Z"
     }
   ]
 }
@@ -129,7 +170,7 @@ curl https://stenion.vercel.app/api/v1/protocol/blend
 | `factors`                     | object or null | The five-factor breakdown, or `null` if never scored. See below.                                                                                                                                                         |
 | `methodologyVersion`          | number or null | Which rulebook version the current score was computed under. **Read it with `category`, not alone** — every category's version counter starts at 1, so the pair identifies a rulebook and the number by itself does not. |
 | `lastRunAt`, `lastRunStatus`  |                | Newest run of any status. See [Staleness](health.md#staleness-is-your-problem-too).                                                                                                                                      |
-| `history`                     | array          | Up to 50 recent runs, newest first. **A discriminated union — see below.**                                                                                                                                               |
+| `history`                     | array          | Up to 50 recent runs, newest first, each `ok` one carrying its own `factors`. **A discriminated union — see below.**                                                                                                     |
 
 ### The `factors` object
 
@@ -219,9 +260,11 @@ This is the single most likely thing to get wrong, so it gets its own section.
 `history[]` entries are **not** a uniform shape with nullable fields. They are a union discriminated
 on `status`:
 
-- an **`ok`** row carries `safetyScore`, `methodologyVersion`, `computedAt`, and `runAt`.
+- an **`ok`** row carries `safetyScore`, `methodologyVersion`, `factors`, `computedAt`, and
+  `runAt`.
 - a **`failed`** row carries `error` and `runAt`, and **does not have a `safetyScore` key at all** —
-  not `null`, not `0`. The key is absent.
+  not `null`, not `0`. The key is absent. Nor a `factors` key: a run that failed produced no
+  breakdown, and an empty object here would read as five factors that all scored nothing.
 
 That absence is deliberate. A failed run is a **gap in our data**, never a score of zero, and giving
 it a `safetyScore: 0` would let a pipeline outage render as a protocol suddenly becoming maximally
@@ -233,6 +276,8 @@ type HistoryEntry =
       status: 'ok';
       safetyScore: number;
       methodologyVersion: number;
+      // the same shape as the top-level `factors`, as THAT run computed it
+      factors: Record<string, RiskFactor | null>;
       computedAt: string;
       runAt: string;
     }
@@ -243,18 +288,20 @@ type HistoryEntry =
     };
 ```
 
-A `failed` row looks like this. **This example is constructed from the schema, not captured live** —
-no production run has ever failed, so there is no real one to show you. The shape is enforced by a
-database `CHECK` constraint and pinned by tests, but we are not going to present a fabricated body
-as a live capture:
+A `failed` row looks like this — captured live, from Blend's history on 2026-08-28. It is a run the
+shared public RPC refused, which is what most failures here are: our failure to read the chain, not
+anything about the protocol.
 
 ```json
 {
   "status": "failed",
-  "error": "Blend: simulation of lastprice failed",
-  "runAt": "2026-08-19T13:20:04.336Z"
+  "error": "Request failed with status code 429",
+  "runAt": "2026-08-28T12:30:18.171Z"
 }
 ```
+
+(This example was previously constructed from the schema, because at the time no production run had
+ever failed. Some now have.)
 
 **Do this** — branch on `status` and let a failure be a gap:
 
@@ -280,5 +327,21 @@ for (const entry of detail.history) {
 `error` is our own message, and it is meant to be readable. It describes **our** failure to read the
 chain — an RPC timeout, a decode error — and says nothing about the protocol's safety. Do not
 surface it as a risk signal.
+
+### A history row's `factors` belong to that row
+
+An `ok` row's `factors` are what **that run** computed, from the on-chain state it read at
+`computedAt` — not the current breakdown restated under an old date. That is the whole point of
+returning them: a score moving from 51 to 49 tells you nothing until you can see which factor moved.
+
+Read them under that row's own `methodologyVersion`, exactly as you read its `safetyScore`. Two rows
+stamped with different versions were scored by different rules, so a factor that appears in both is
+not necessarily the same measurement — and a factor may not appear in both at all. Nothing is
+backfilled across a version bump; `risk_scores` stores outputs, never the raw on-chain inputs, so an
+old row cannot be recomputed under new rules and never will be.
+
+Sizing note: 50 rows each carry a full factor map, so this response is measured in tens of
+kilobytes, not hundreds of bytes. It is one response — there is no per-row fetch, and adding one
+would be 50 requests for data you already have.
 
 ---

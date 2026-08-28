@@ -11,14 +11,7 @@ import {
   Search,
 } from 'lucide-react';
 import { notesFor, type ProtocolNote } from '../../lib/protocol-notes';
-import {
-  FACTOR_ORDER,
-  getProtocolDetail,
-  type HistoryEntry,
-  type ProtocolDetail,
-  type RiskFactorKey,
-  type RiskFactorMap,
-} from '../../lib/api';
+import { getProtocolDetail, type HistoryEntry, type ProtocolDetail } from '../../lib/api';
 import { formatTimestamp, freshness } from '../../lib/format';
 import { contractExplorerUrl, shortenContractId } from '../../lib/explorer';
 import { MarkAttribution, ProtocolLogo } from '../../../components/protocol-logo';
@@ -26,8 +19,9 @@ import { DeploymentBadge, DeploymentNotice } from '../../../components/deploymen
 import { OperationalBadge, OperationalNotice } from '../../../components/operational-badge';
 import { ScoreRing } from '../../../components/score-ring';
 import { StatusPill } from '../../../components/status-pill';
-import { FactorCard } from '../../../components/factor-bar';
+import { FactorBreakdown } from '../../../components/factor-breakdown';
 import { Reveal, RevealGroup, RevealItem } from '../../../components/reveal';
+import { RunHistory } from '../../../components/run-history';
 import { ScoreHistoryChart } from '../../../components/score-history-chart';
 
 export const dynamic = 'force-dynamic';
@@ -119,7 +113,7 @@ export default async function ProtocolDetailPage({ params }: { params: Promise<{
             No factor breakdown yet — this protocol has no successful score run.
           </div>
         ) : (
-          <FactorBreakdown factors={detail.factors} />
+          <FactorBreakdown factors={detail.factors} className="mt-6" />
         )}
       </section>
 
@@ -128,56 +122,6 @@ export default async function ProtocolDetailPage({ params }: { params: Promise<{
       <ScoreHistory history={detail.history} />
 
       <History history={detail.history} />
-    </div>
-  );
-}
-
-/**
- * The five factors, laid out by how much each one actually has to say.
- *
- * A factor that publishes a `components` breakdown carries several times the
- * content of one that doesn't — `oracleSafety` always does, with three
- * sub-signals and roughly six times the text of any other factor, and
- * `liquiditySafety`/`utilizationSafety` do whenever the minimum-size filter
- * excluded a reserve they then have to disclose. In a uniform
- * two-column grid that forced its row partner to stretch to match, leaving a
- * tall empty gap beside it (and, with five cards in two columns, an orphan on
- * the last row). Factors with a breakdown get the full width instead; the rest
- * fill an even grid.
- *
- * This is a presentation choice, not a ranking one — the registry still ranks
- * purely on `safetyScore`, and giving a factor more room says nothing about its
- * value. It's keyed off having a breakdown rather than hardcoding `oracleSafety`
- * so a factor that gains components later is laid out correctly without a change
- * here. Note it does reorder the display: featured factors lead, and the rest
- * follow in FACTOR_ORDER.
- */
-function FactorBreakdown({ factors }: { factors: RiskFactorMap }) {
-  const hasBreakdown = (key: RiskFactorKey) => (factors[key]?.components?.length ?? 0) > 0;
-  const featured = FACTOR_ORDER.filter((f) => hasBreakdown(f.key));
-  const compact = FACTOR_ORDER.filter((f) => !hasBreakdown(f.key));
-
-  return (
-    <div className="mt-6 space-y-3">
-      {featured.length > 0 && (
-        <RevealGroup className="space-y-3" stagger={0.06}>
-          {featured.map(({ key, label }, i) => (
-            <RevealItem key={key}>
-              <FactorCard label={label} factor={factors[key]} index={i} featured />
-            </RevealItem>
-          ))}
-        </RevealGroup>
-      )}
-
-      {compact.length > 0 && (
-        <RevealGroup className="grid gap-3 sm:grid-cols-2" stagger={0.06}>
-          {compact.map(({ key, label }, i) => (
-            <RevealItem key={key} className="h-full">
-              <FactorCard label={label} factor={factors[key]} index={featured.length + i} />
-            </RevealItem>
-          ))}
-        </RevealGroup>
-      )}
     </div>
   );
 }
@@ -464,68 +408,14 @@ function History({ history }: { history: HistoryEntry[] }) {
         <h2 className="font-display text-xl font-semibold text-ink">Recent runs</h2>
         <p className="mt-1 text-sm text-muted">
           The last {history.length} scoring {history.length === 1 ? 'run' : 'runs'}, newest first.
+          Open a scored run to see the factor breakdown it produced.
         </p>
       </Reveal>
 
+      {/* The list itself is a client component — the rows expand, and which are
+          open is interaction state. Everything above it stays server-rendered. */}
       <Reveal delay={0.05} className="mt-5 overflow-hidden rounded-xl border border-line">
-        <ul className="divide-y divide-line-soft">
-          {history.map((h, i) => {
-            // History is newest-first, so the row *after* this one is older. When
-            // its methodology version is lower, the rules changed between them —
-            // mark it, so a step in the score doesn't read as a move in risk.
-            const older = history[i + 1];
-            const breakAfter =
-              h.status === 'ok' &&
-              older?.status === 'ok' &&
-              older.methodologyVersion < h.methodologyVersion;
-
-            return (
-              <li
-                key={i}
-                aria-label={`Run on ${formatTimestamp(h.runAt)}: ${
-                  h.status === 'ok'
-                    ? `scored ${h.safetyScore} out of 100`
-                    : `failed with error ${h.error}`
-                }`}
-              >
-                <div className="flex items-center gap-3 bg-surface/40 px-4 py-3 text-sm">
-                  <span
-                    aria-hidden="true"
-                    className={`h-2 w-2 shrink-0 rounded-full ${
-                      h.status === 'ok' ? 'bg-safe' : 'bg-danger'
-                    }`}
-                  />
-                  <span className="tnum w-40 shrink-0 text-muted">{formatTimestamp(h.runAt)}</span>
-                  {h.status === 'ok' ? (
-                    <span className="text-ink">
-                      scored <span className="score-num font-semibold">{h.safetyScore}</span>
-                    </span>
-                  ) : (
-                    <span className="truncate text-danger">failed — {h.error}</span>
-                  )}
-                </div>
-
-                {breakAfter && (
-                  <div className="border-t border-dashed border-line bg-surface-2/60 px-4 py-2.5 text-xs leading-relaxed text-faint">
-                    <span className="font-medium text-muted">
-                      Methodology v{(older as { methodologyVersion: number }).methodologyVersion} →
-                      v{(h as { methodologyVersion: number }).methodologyVersion}.
-                    </span>{' '}
-                    Scoring rules changed here, so scores above and below this line are not
-                    comparable. Earlier runs cannot be recomputed — only scores are stored, not the
-                    on-chain inputs behind them.{' '}
-                    <Link
-                      href="/methodology"
-                      className="underline hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
-                    >
-                      What changed
-                    </Link>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <RunHistory history={history} />
       </Reveal>
     </section>
   );

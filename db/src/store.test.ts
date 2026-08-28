@@ -54,6 +54,7 @@ const okRow = (over: Partial<HistoryRow> = {}): HistoryRow => ({
   status: 'ok',
   safety_score: '53',
   error: null,
+  factors: FACTORS,
   computed_at: COMPUTED_AT,
   run_at: RUN_AT,
   methodology_version: 1,
@@ -64,6 +65,7 @@ const failedRow = (over: Partial<HistoryRow> = {}): HistoryRow => ({
   status: 'failed',
   safety_score: null,
   error: 'Blend: simulation of lastprice failed',
+  factors: null,
   computed_at: null,
   run_at: RUN_AT,
   methodology_version: null,
@@ -106,6 +108,7 @@ describe('toHistoryEntry — the ok/failed discriminated union', () => {
       status: 'ok',
       safetyScore: 53,
       methodologyVersion: 1,
+      factors: FACTORS,
       computedAt: '2026-08-16T11:25:01.000Z',
       runAt: '2026-08-16T11:25:02.000Z',
     });
@@ -130,7 +133,24 @@ describe('toHistoryEntry — the ok/failed discriminated union', () => {
     assert.ok(!('safetyScore' in entry), 'failed entries must not carry safetyScore at all');
     assert.ok(!('methodologyVersion' in entry));
     assert.ok(!('computedAt' in entry));
+    // Same rule, same reason: a failed run has no breakdown either, and an
+    // empty object here would render as five factors that scored nothing.
+    assert.ok(!('factors' in entry), 'failed entries must not carry factors at all');
     assert.notEqual(entry.safetyScore, 0);
+  });
+
+  it('carries the factor map that run stored, not the protocol current one', () => {
+    // The point of surfacing factors per history row (#82): a run's breakdown is
+    // what THAT run computed. If this were sourced from the detail's top-level
+    // factors instead, every row in the list would show today's numbers under
+    // yesterday's date — which is worse than not showing them at all.
+    const older = {
+      collateralSafety: { value: 41, weight: 0.2, detail: 'as it was' },
+    } as unknown as RiskFactorMap;
+
+    const entry = toHistoryEntry(okRow({ factors: older, safety_score: '41' }));
+    assert.equal(entry.status === 'ok' && entry.factors, older);
+    assert.notEqual(entry.status === 'ok' && entry.factors, FACTORS);
   });
 
   it('keeps runAt on both arms, so every run is placeable in time', () => {
