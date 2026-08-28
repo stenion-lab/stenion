@@ -134,9 +134,17 @@ export interface LeaderboardEntry {
 /**
  * One row of a protocol's recent score history (GET /api/v1/protocol/:id). A
  * discriminated union on `status` mirroring the persisted RunRecord: `ok` rows
- * carry the score + timestamps, `failed` rows carry the error. Factors are
- * deliberately omitted here (they live on the detail's top-level current score);
- * they remain in the risk_scores jsonb and can be surfaced later if needed.
+ * carry the score, its factor breakdown and the timestamps; `failed` rows carry
+ * the error.
+ *
+ * `factors` was withheld here until #82 and is now returned, because the
+ * alternative was worse than the payload it saves. Every run's map was already
+ * in the `risk_scores` jsonb, and a consumer that wanted a past run's breakdown
+ * had no way to reach it but a per-row request — 50 of them for one page. It is
+ * the SAME shape as the detail's top-level `factors`, read under the rulebook
+ * named by that row's own `methodologyVersion`: a breakdown from a run stamped
+ * with an older version was computed by different rules and is not comparable
+ * with a newer one, exactly as the score isn't.
  */
 export type HistoryEntry =
   | {
@@ -144,6 +152,12 @@ export type HistoryEntry =
       safetyScore: number;
       /** methodology version this point was scored under — see migration 0002 */
       methodologyVersion: number;
+      /**
+       * The breakdown behind `safetyScore`, as that run computed it. Non-null on
+       * an `ok` row by the `risk_scores_shape` CHECK — a scored run without a
+       * factor map cannot be written.
+       */
+      factors: RiskFactorMap;
       computedAt: string;
       runAt: string;
     }
@@ -335,6 +349,7 @@ export interface HistoryRow {
   status: 'ok' | 'failed';
   safety_score: string | null;
   error: string | null;
+  factors: RiskFactorMap | null;
   computed_at: Date | null;
   run_at: Date;
   methodology_version: number | null;
@@ -356,6 +371,9 @@ export function toHistoryEntry(row: HistoryRow): HistoryEntry {
         safetyScore: toNumber(row.safety_score) as number,
         // non-null on ok rows by risk_scores_methodology_version_shape
         methodologyVersion: row.methodology_version as number,
+        // jsonb comes back parsed, so this passes straight through like the
+        // detail's top-level factors; non-null on ok rows by risk_scores_shape.
+        factors: row.factors as RiskFactorMap,
         computedAt: toIso(row.computed_at) as string,
         runAt: row.run_at.toISOString(),
       }
@@ -667,7 +685,11 @@ export function createStore(pool: Pool): Store {
       if (!row) return null;
 
       const { rows: historyRows } = await pool.query<HistoryRow>(
-        `SELECT status, safety_score, error, computed_at, run_at, methodology_version
+        // `factors` is selected here rather than fetched per row on demand: the
+        // breakdown is rendered from the same response the list already costs,
+        // never from 50 follow-up requests. It is the only wide column in this
+        // query, and the LIMIT is what keeps that bounded.
+        `SELECT status, safety_score, error, factors, computed_at, run_at, methodology_version
            FROM risk_scores
           WHERE protocol_id = $1
           ORDER BY run_at DESC

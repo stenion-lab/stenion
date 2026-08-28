@@ -215,8 +215,10 @@ Stated so you do not go looking:
   paging, that is an additive change and would arrive on `v1` with a documented default.
 - **No historical range query.** `history` is the most recent 50 runs, fixed. There is no `?from=`
   or `?limit=`.
-- **No factor history.** History rows carry the overall score, not the factor breakdown. The factors
-  are stored, so this could be added additively — open an issue if you need it.
+- **No historical factor DIFF.** History rows do carry their own `factors` (added in #82), so you
+  can see which factor moved a score. What there is not is a server-side comparison endpoint: diff
+  two rows yourself, and only when their `methodologyVersion` matches — factors from two rulebooks
+  are no more comparable than the scores are.
 - **No webhooks or streaming.** Poll.
 - **No authentication.** There is nothing to authenticate; it is all public.
 
