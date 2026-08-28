@@ -158,6 +158,13 @@ export type HistoryEntry =
       safetyScore: number;
       /** rulebook version this point was scored under; scores across versions aren't comparable */
       methodologyVersion: number;
+      /**
+       * The breakdown that run computed, same shape as the detail's top-level
+       * `factors`. Read it under this row's own `methodologyVersion`: a
+       * breakdown from an older rulebook is no more comparable with a newer one
+       * than the score is.
+       */
+      factors: RiskFactorMap;
       computedAt: string;
       runAt: string;
     }
@@ -207,3 +214,64 @@ export const FACTOR_ORDER: { key: RiskFactorKey; label: string }[] = [
   { key: 'liquiditySafety', label: 'Liquidity' },
   { key: 'utilizationSafety', label: 'Utilization' },
 ];
+
+/** One factor ready to render: its key, its display label, and its value. */
+export interface FactorRow {
+  key: string;
+  label: string;
+  factor: RiskFactor | null;
+}
+
+/**
+ * A factor map → the rows to render, in display order.
+ *
+ * DRIVEN BY THE MAP'S OWN KEYS, not by FACTOR_ORDER alone. FACTOR_ORDER is
+ * lending's five, and lending is the only category with a rulebook today — but
+ * the factor set IS what a category is (`CATEGORY_FACTORS` in core), so a
+ * second category's map will not have these keys. A renderer that walked
+ * FACTOR_ORDER and read the map by key would silently draw five "N/A" cards for
+ * it, and silently drop everything it did publish. So known keys come first, in
+ * FACTOR_ORDER, and anything else follows in the order the map declares it.
+ *
+ * This also matters for a HISTORICAL run, which is the reason it exists: a row
+ * in the run history was scored under its own `methodologyVersion`, and the
+ * factor set of an older rulebook is whatever that run stored — not whatever
+ * the current one publishes.
+ *
+ * Takes a plain record rather than `RiskFactorMap` for the same reason:
+ * `RiskFactorMap` names lending's five exactly, and this must be able to read a
+ * map that doesn't. `RiskFactorMap` is assignable to it.
+ */
+export function factorRows(factors: Record<string, RiskFactor | null>): FactorRow[] {
+  const known = FACTOR_ORDER.filter(({ key }) => key in factors).map(({ key, label }) => ({
+    key: key as string,
+    label,
+    factor: factors[key] ?? null,
+  }));
+  const seen = new Set(FACTOR_ORDER.map((f) => f.key as string));
+  const rest = Object.keys(factors)
+    .filter((key) => !seen.has(key))
+    .map((key) => ({ key, label: factorLabel(key), factor: factors[key] ?? null }));
+
+  return [...known, ...rest];
+}
+
+/**
+ * Fallback display name for a factor this file has no label for — a future
+ * category's, or one added to core before the labels here caught up.
+ *
+ * `impermanentLossSafety` → "Impermanent loss". The trailing `Safety` is
+ * dropped because every factor carries it (the naming rule that stops a name
+ * disagreeing with its number), so repeating it in five labels says nothing.
+ * A derived label is worse than a written one, which is why FACTOR_ORDER still
+ * exists — it is here so an unlabelled factor renders as itself rather than
+ * not at all.
+ */
+function factorLabel(key: string): string {
+  const words = key
+    .replace(/Safety$/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .trim();
+  return words.length === 0 ? key : words[0].toUpperCase() + words.slice(1);
+}

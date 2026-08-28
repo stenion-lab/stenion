@@ -16,17 +16,27 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { HistoryEntry } from './contract.ts';
+import type { HistoryEntry, RiskFactorMap } from './contract.ts';
 import { buildScoreSeries, GAP_BREAK_FACTOR, timeTicks } from './score-series.ts';
 
 const T0 = Date.parse('2026-08-14T08:00:00.000Z');
 const FIVE_MIN = 5 * 60_000;
+
+/**
+ * Every `ok` row carries a factor map. Nothing in this file reads it — the
+ * series builder plots `safetyScore` and nothing else, which is the point: the
+ * breakdown a row carries must not become an input to the chart.
+ */
+const FACTORS = {
+  collateralSafety: { value: 58, weight: 0.2, detail: 'x' },
+} as unknown as RiskFactorMap;
 
 /** Default version is 1 — the only version any stored row carries today. */
 const ok = (minute: number, score: number, version = 1): HistoryEntry => ({
   status: 'ok',
   safetyScore: score,
   methodologyVersion: version,
+  factors: FACTORS,
   computedAt: new Date(T0 + minute * 60_000).toISOString(),
   runAt: new Date(T0 + minute * 60_000).toISOString(),
 });
