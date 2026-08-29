@@ -199,6 +199,12 @@ export function operationalLabel(level: Exclude<OperationalLevel, 'active'>): st
   switch (level) {
     case 'borrowingDisabled':
       return 'Borrowing disabled';
+    // Names what stopped AND what did not, because for an AMM the second half is
+    // the part a reader would otherwise assume wrongly: a halted market sounds
+    // like trapped capital, and here it is not. "Trading halted" alone would
+    // leave that to guesswork.
+    case 'swapDisabled':
+      return 'Trading halted, LP open';
     case 'entryDisabled':
       return 'Deposits & borrowing disabled';
     case 'exitDisabled':

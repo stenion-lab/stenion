@@ -21,9 +21,16 @@ export type RunStatus = 'ok' | 'failed';
  * under its own weights, so a number from one says nothing about a number from
  * another. Anything that RANKS these entries must scope the ranking to one
  * category, and a position numeral must never span two — the registry enforces
- * that in #78. One member today; the union is what makes a second expressible.
+ * that in #78.
+ *
+ * `dex` is registered but nothing is scored under it yet: its rulebook is
+ * published (`methodology/dex.md`) while its weight table is still under review,
+ * so no entry the API returns carries it today. It is in the union because the
+ * union is the thing the registry's per-category grouping is built against, and
+ * a category that appears in the data before it appears in the type is how an
+ * entry ends up in the wrong ranked block.
  */
-export type ProtocolCategory = 'lending';
+export type ProtocolCategory = 'lending' | 'dex';
 
 /**
  * Present when an entry is a market running on ANOTHER protocol's contracts
@@ -60,16 +67,31 @@ export interface ProtocolDeployment {
  * METHODOLOGY.md, "Operational state is published, never scored".
  */
 export type OperationalLevel =
-  'active' | 'borrowingDisabled' | 'entryDisabled' | 'exitDisabled' | 'notOperational';
+  | 'active'
+  | 'borrowingDisabled'
+  /** cannot trade; depositing and withdrawing both work — an AMM whose swaps are killed */
+  | 'swapDisabled'
+  | 'entryDisabled'
+  | 'exitDisabled'
+  | 'notOperational';
 
 /**
- * One user-facing operation a LENDING market can refuse.
+ * One user-facing operation a market can refuse.
  *
- * Per category, like the factor set: these five are lending's vocabulary, and a
- * future category publishes its own rather than describing its restrictions in
- * these words. `OperationalLevel` above is shared across all of them.
+ * Per category, like the factor set: `supply / withdraw / borrow / repay /
+ * liquidate` are lending's vocabulary and `swap / deposit / withdraw / claim`
+ * are dex's, so a category describes its restrictions in its own words rather
+ * than in another category's. `withdraw` appears in both because it is the same
+ * user intent; nothing else overlaps. `OperationalLevel` above is shared across
+ * all of them.
+ *
+ * A UNION OF BOTH, NOT A PAIR OF TYPES, because this mirror describes what an
+ * API response can hold and a response is not parameterized by its protocol's
+ * category — the same reason `OperationFor` in core defaults to every
+ * category's operations.
  */
-export type PoolOperation = 'supply' | 'withdraw' | 'borrow' | 'repay' | 'liquidate';
+export type PoolOperation =
+  'supply' | 'withdraw' | 'borrow' | 'repay' | 'liquidate' | 'swap' | 'deposit' | 'claim';
 
 /**
  * A market's live restrictions as of its latest successful run.

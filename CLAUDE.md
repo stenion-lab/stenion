@@ -150,7 +150,17 @@ These override any default behavior and are enforced in code and review:
   drift into two rulebooks while both still produce plausible scores — the failure the shared
   `scoreFactors` exists to prevent, applied to the numbers it averages. `scoreFactors` is generic
   over the factor map for the same reason: the weighted mean is category-agnostic, so there must
-  never be a per-category variant of it.
+  never be a per-category variant of it. **A category may be registered before its weights are
+  reviewed, and that state is typed, not commented.** `CategoryFactors` is a union discriminated on
+  `status`: `'published'` carries `FactorDeclaration` (weight required), `'pendingWeights'` carries
+  `UnweightedFactorDeclaration`, which has **no `weight` property at all** — so reading one is a
+  compile error rather than an `undefined` that becomes `NaN` in `scoreFactors` and publishes a
+  confident-looking `0`. It exists because `TAXONOMY.md` admits a category in two steps (the factor
+  set, then the weight table), and a placeholder weight is indistinguishable from a reviewed one the
+  moment anyone reads it. `weights.test.ts` asserts the absence at runtime and `scoring.test.ts`
+  asserts such a category publishes **no** weight table in `methodology/`, so the two cannot drift
+  into agreeing on a number nobody reviewed. It is a state to leave, not to live in — `dex` is in it
+  today (#100 → #102).
 - **An adapter is a FOLDER of four files, and only `index.ts` is API.** `adapters/<protocol>/`
   holds `types.ts` (mainnet wiring, constants, raw on-chain shape, options), `fetch.ts` (everything
   touching RPC/Horizon, plus decoders, behind one `fetch*` entry point), `score.ts` (the five

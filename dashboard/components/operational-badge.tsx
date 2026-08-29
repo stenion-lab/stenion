@@ -38,6 +38,10 @@ import type { OperationalLevel, OperationalState } from '../app/lib/contract';
 /** Icon per level. Wording and colour live in `format.ts`, so they can be tested. */
 const ICONS: Record<Exclude<OperationalLevel, 'active'>, typeof Lock> = {
   borrowingDisabled: PauseCircle,
+  // Same icon as borrowingDisabled, deliberately: both say the market's own core
+  // activity is paused while capital can still come and go. Reaching for a
+  // distinct glyph would draw a distinction the two rungs do not carry.
+  swapDisabled: PauseCircle,
   entryDisabled: AlertTriangle,
   // The one that traps capital.
   exitDisabled: Lock,

@@ -120,15 +120,28 @@ function docCategorySection(category: ProtocolCategory): string {
  * One category's "Factor weights" table: rows like ``| `oracleSafety` | 0.25 |``.
  * The `Total` row is excluded by requiring a `*Safety` name.
  */
-function docWeightTable(category: ProtocolCategory): { factor: string; weight: number }[] {
+function docWeightRows(category: ProtocolCategory): { factor: string; weight: number }[] {
   const rows = [
     ...docCategorySection(category).matchAll(/^\|\s*`(\w+Safety)`\s*\|\s*([\d.]+)\s*\|/gm),
   ];
+  return rows.map((m) => ({ factor: m[1], weight: Number(m[2]) }));
+}
+
+/**
+ * The same rows, but insisting there are some.
+ *
+ * Split from `docWeightRows` because a `pendingWeights` category is asserted to
+ * publish NO weight table, and an empty result is the passing case there — so
+ * the "did the format change?" alarm cannot live inside the parser any more.
+ * Callers that require a table say so by calling this one.
+ */
+function docWeightTable(category: ProtocolCategory): { factor: string; weight: number }[] {
+  const rows = docWeightRows(category);
   assert.ok(
     rows.length > 0,
     `could not parse ${category}'s factor-weight table out of METHODOLOGY.md — has its format changed?`,
   );
-  return rows.map((m) => ({ factor: m[1], weight: Number(m[2]) }));
+  return rows;
 }
 
 /**
@@ -273,13 +286,65 @@ describe("scoreFactors — agreement with METHODOLOGY.md's lending section", () 
     // that message if the heading is missing, so iterating every category is the
     // whole assertion — and it is the check that stops the next category being
     // registered in code and forgotten in the document.
+    //
+    // THE WEIGHT TABLE AND WORKED EXAMPLE ARE REQUIRED OF A `published`
+    // CATEGORY, NOT OF EVERY ONE. A worked example is an arithmetic
+    // demonstration of the weight table, so a category whose weights are
+    // deliberately not yet reviewed (`status: 'pendingWeights'` — `dex`, whose
+    // weights are #102) has nothing it could honestly show: any table it
+    // published would be numbers invented to satisfy a parser, which is the
+    // opposite of what parsing the document is for. The `## <Label>` section
+    // itself is still required of it, because the factor set, the anchors and
+    // the rejected alternatives are exactly what such a category HAS been
+    // reviewed on.
     for (const category of PROTOCOL_CATEGORIES) {
       const section = docCategorySection(category);
       assert.ok(section.trim().length > 0, `${category}'s section in METHODOLOGY.md is empty`);
+
+      if (CATEGORY_FACTORS[category].status !== 'published') continue;
       assert.ok(docWeightTable(category).length > 0, `${category} publishes no weight table`);
       assert.ok(
         docWorkedExample(category).pairs.length > 0,
         `${category} publishes no worked example`,
+      );
+    }
+  });
+
+  it('publishes NO weight table for a category whose weights are not yet reviewed', () => {
+    // The mirror, and the half that stops the skip above from being a hole. A
+    // `pendingWeights` category that published a weight table anyway would be
+    // asserting reviewed weights in the one document that is supposed to be the
+    // source of truth for them, while the code carried none — drift in the
+    // loudest possible place. Either the numbers are real, in which case the
+    // status flips and the table is pinned against `CATEGORY_FACTORS` by the
+    // assertion above, or there are no numbers to print.
+    for (const category of PROTOCOL_CATEGORIES) {
+      if (CATEGORY_FACTORS[category].status === 'published') continue;
+      assert.equal(
+        docWeightRows(category).length,
+        0,
+        `methodology/${category}.md publishes a weight table for a category ` +
+          `declared 'pendingWeights'. Flip the status and land the weights in ` +
+          `CATEGORY_FACTORS in the same change, or remove the table.`,
+      );
+    }
+  });
+
+  it('names, in the doc, exactly the factors the category declares', () => {
+    // The Gate-6 pin that survives a category having no weights: whatever else
+    // is deferred, the factor SET is what #100 admitted, and the document and
+    // `CATEGORY_FACTORS` must agree on it. Lending's version of this check runs
+    // through its weight table (above); a pendingWeights category has no table,
+    // so the keys are read from the `#### N. \`factorKey\`` headings its section
+    // uses to introduce each factor — the same headings lending's section uses.
+    for (const category of PROTOCOL_CATEGORIES) {
+      const section = docCategorySection(category);
+      const fromDoc = [...section.matchAll(/^#{3,4} \d+\. `([A-Za-z]+)`/gm)].map((m) => m[1]);
+      assert.deepEqual(
+        [...fromDoc].sort(),
+        Object.keys(CATEGORY_FACTORS[category].factors).sort(),
+        `methodology/${category}.md introduces a different set of factors than ` +
+          `CATEGORY_FACTORS.${category} declares`,
       );
     }
   });

@@ -15,6 +15,7 @@
 export const METHODOLOGY_PARTS = [
   'methodology/index.md',
   'methodology/lending.md',
+  'methodology/dex.md',
   'methodology/publishing-rules.md',
 ];
 

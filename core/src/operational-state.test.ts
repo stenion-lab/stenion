@@ -15,9 +15,11 @@ import { describe, it } from 'node:test';
 
 import {
   CATEGORY_OPERATIONS,
+  DexOperation,
   OperationalLevel,
   PoolOperation,
   mostRestrictive,
+  toDexOperationalState,
   toOperationalState,
 } from './operational-state.ts';
 import { PROTOCOL_CATEGORIES } from './category.ts';
@@ -25,7 +27,26 @@ import type { OperationalReading } from './operational-state.ts';
 
 const AS_OF = new Date('2026-08-25T10:00:00.000Z');
 
-const reading = (over: Partial<OperationalReading> = {}): OperationalReading => ({
+// EXPLICITLY `<'lending'>`, where it used to rely on the default. While lending
+// was the only category the default parameter WAS lending, so an unparameterized
+// reading happened to satisfy `toOperationalState`. With `dex` registered the
+// default is every category's vocabulary — correctly, that is what a storage row
+// holds — and a lending classifier must not accept one. Saying which category
+// these readings belong to is the fix, and it is the same thing the dex helper
+// below does.
+const reading = (
+  over: Partial<OperationalReading<'lending'>> = {},
+): OperationalReading<'lending'> => ({
+  blocked: [],
+  neverOpened: false,
+  source: 'test',
+  origin: 'indeterminate',
+  detail: 'test',
+  asOf: AS_OF,
+  ...over,
+});
+
+const dexReading = (over: Partial<OperationalReading<'dex'>> = {}): OperationalReading<'dex'> => ({
   blocked: [],
   neverOpened: false,
   source: 'test',
@@ -121,8 +142,16 @@ describe('toOperationalState — the shared ladder', () => {
 });
 
 describe('mostRestrictive — reducing several readings to one', () => {
-  const at = (level: OperationalLevel, source: string) => {
-    const blocked: Record<OperationalLevel, PoolOperation[]> = {
+  // Every level a LENDING reading can classify as. `swapDisabled` is excluded
+  // because no lending reading can produce it — `blocked` here is lending's
+  // vocabulary, which has no `swap` in it — and a `Record` over the full ladder
+  // would demand a lending blocked-set for a rung lending cannot reach. The
+  // `Exclude` is the assertion, not a workaround: it fails if `swapDisabled`
+  // ever becomes reachable from these five operations.
+  type LendingLevel = Exclude<OperationalLevel, typeof OperationalLevel.SwapDisabled>;
+
+  const at = (level: LendingLevel, source: string) => {
+    const blocked: Record<LendingLevel, PoolOperation[]> = {
       [OperationalLevel.Active]: [],
       [OperationalLevel.BorrowingDisabled]: [PoolOperation.Borrow],
       [OperationalLevel.EntryDisabled]: [PoolOperation.Supply, PoolOperation.Borrow],
@@ -216,15 +245,165 @@ describe('CATEGORY_OPERATIONS — vocabulary per category, ladder shared', () =>
     // put value into. If a future change moves these rungs into
     // CATEGORY_OPERATIONS-style per-category tables, the shared representation
     // this module exists for is gone — see its header.
+    //
+    // `swapDisabled` arrived with `dex` (#100) and did NOT fork the ladder: it
+    // is a sixth rung on the one shared ladder, which is the whole point of
+    // adding it here rather than giving dex a ladder of its own.
     assert.deepEqual(Object.values(OperationalLevel).sort(), [
       'active',
       'borrowingDisabled',
       'entryDisabled',
       'exitDisabled',
       'notOperational',
+      'swapDisabled',
     ]);
   });
 
+  it("registers dex's four operations, against the same object DexOperation exports", () => {
+    assert.equal(CATEGORY_OPERATIONS.dex, DexOperation);
+    assert.deepEqual(Object.values(CATEGORY_OPERATIONS.dex).sort(), [
+      'claim',
+      'deposit',
+      'swap',
+      'withdraw',
+    ]);
+  });
+
+  it('shares only `withdraw` between the two vocabularies', () => {
+    // Not an accident and not a coupling: `withdraw` is the same user intent in
+    // both, and nothing else overlaps. If a future category's vocabulary starts
+    // colliding on more of these, that is a sign the words are being reused for
+    // different intents — which is exactly what per-category vocabularies exist
+    // to prevent.
+    const lending = new Set<string>(Object.values(CATEGORY_OPERATIONS.lending));
+    const shared = Object.values(CATEGORY_OPERATIONS.dex).filter((op) => lending.has(op));
+    assert.deepEqual(shared, ['withdraw']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('toDexOperationalState — the dex ladder', () => {
+  it('calls nothing-blocked active', () => {
+    assert.equal(toDexOperationalState(dexReading()).level, OperationalLevel.Active);
+  });
+
+  it('calls a swap-killed pool swapDisabled, NOT active — open question C', () => {
+    // THE ASSERTION THIS RUNG EXISTS FOR. Aquarius's `kill_swap` halts the
+    // market while both LP paths stay open. Under the pre-#100 ladder this
+    // classified `active` — true about exit, and wrong about the market — and
+    // `level` is the field a reader scans.
+    const state = toDexOperationalState(dexReading({ blocked: [DexOperation.Swap] }));
+    assert.equal(state.level, OperationalLevel.SwapDisabled);
+    assert.deepEqual(state.blocked, ['swap']);
+  });
+
+  it('calls a deposit-killed pool entryDisabled, and does NOT call it exitDisabled', () => {
+    // The live case: two stable pools read `is_killed_deposit = true` on
+    // 2026-08-27. No new LP exposure, and every existing LP can still leave.
+    assert.equal(
+      toDexOperationalState(dexReading({ blocked: [DexOperation.Deposit] })).level,
+      OperationalLevel.EntryDisabled,
+    );
+    assert.equal(
+      toDexOperationalState(dexReading({ blocked: [DexOperation.Swap, DexOperation.Deposit] }))
+        .level,
+      OperationalLevel.EntryDisabled,
+    );
+  });
+
+  it('calls anything blocking withdrawals exitDisabled, whatever else it blocks', () => {
+    // Unreachable from Aquarius — there is no `kill_withdraw` in any of the
+    // three pool wasms — and pinned anyway: the rung is the top of the shared
+    // ladder, and a second dex protocol that CAN freeze withdrawals must have
+    // somewhere to say so.
+    for (const blocked of [
+      [DexOperation.Withdraw],
+      [DexOperation.Swap, DexOperation.Withdraw],
+      [DexOperation.Deposit, DexOperation.Withdraw],
+      [DexOperation.Swap, DexOperation.Deposit, DexOperation.Withdraw, DexOperation.Claim],
+    ]) {
+      assert.equal(
+        toDexOperationalState(dexReading({ blocked })).level,
+        OperationalLevel.ExitDisabled,
+      );
+    }
+  });
+
+  it('gives claim no rung of its own — principal is untouched', () => {
+    // Reportable, deliberately not rankable: an LP whose reward claim is killed
+    // can still withdraw every unit of principal. Same reasoning lending gives
+    // for repay and liquidate.
+    const state = toDexOperationalState(dexReading({ blocked: [DexOperation.Claim] }));
+    assert.equal(state.level, OperationalLevel.Active);
+    assert.deepEqual(state.blocked, ['claim'], 'still published, just not on the ladder');
+  });
+
+  it('publishes blocked in canonical order regardless of the order it was given', () => {
+    const state = toDexOperationalState(
+      dexReading({
+        blocked: [
+          DexOperation.Claim,
+          DexOperation.Withdraw,
+          DexOperation.Deposit,
+          DexOperation.Swap,
+        ],
+      }),
+    );
+    assert.deepEqual(state.blocked, ['swap', 'deposit', 'withdraw', 'claim']);
+  });
+
+  it('deduplicates a repeated operation', () => {
+    const state = toDexOperationalState(
+      dexReading({ blocked: [DexOperation.Swap, DexOperation.Swap] }),
+    );
+    assert.deepEqual(state.blocked, ['swap']);
+  });
+
+  it('lets neverOpened supersede the ladder, as it does for lending', () => {
+    assert.equal(
+      toDexOperationalState(dexReading({ neverOpened: true, blocked: [DexOperation.Swap] })).level,
+      OperationalLevel.NotOperational,
+    );
+  });
+
+  it('carries the reading through verbatim and stamps asOf as ISO', () => {
+    const state = toDexOperationalState(
+      dexReading({
+        source: 'get_is_killed_swap() = true',
+        origin: 'admin',
+        detail: 'swaps halted; deposits and withdrawals open',
+      }),
+    );
+    assert.equal(state.source, 'get_is_killed_swap() = true');
+    assert.equal(state.origin, 'admin');
+    assert.equal(state.detail, 'swaps halted; deposits and withdrawals open');
+    assert.equal(state.asOf, '2026-08-25T10:00:00.000Z');
+  });
+
+  it('ranks swapDisabled level with borrowingDisabled and below entryDisabled', () => {
+    // The two core-activity rungs are the same degree of restriction in two
+    // vocabularies, so `mostRestrictive` must not prefer either — and a dex
+    // reading that blocks deposits must still outrank one that blocks swaps.
+    const swap = toDexOperationalState(dexReading({ blocked: [DexOperation.Swap], source: 'a' }));
+    const entry = toDexOperationalState(
+      dexReading({ blocked: [DexOperation.Deposit], source: 'b' }),
+    );
+    assert.equal(mostRestrictive([swap, entry]).source, 'b');
+    assert.equal(mostRestrictive([entry, swap]).source, 'b');
+
+    // Equal rank: ties keep the first reading, in both orders.
+    const alsoSwap = toDexOperationalState(
+      dexReading({ blocked: [DexOperation.Swap], source: 'c' }),
+    );
+    assert.equal(mostRestrictive([swap, alsoSwap]).source, 'a');
+    assert.equal(mostRestrictive([alsoSwap, swap]).source, 'c');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('the lending ladder is untouched by the second category', () => {
   it('classifies lending readings exactly as it did before categories existed', () => {
     // The regression guard for this issue. Same inputs, same ladder, same
     // outputs — the type changed and the behaviour did not.
@@ -245,5 +424,24 @@ describe('CATEGORY_OPERATIONS — vocabulary per category, ladder shared', () =>
       toOperationalState(reading({ neverOpened: true })).level,
       OperationalLevel.NotOperational,
     );
+  });
+
+  it('cannot produce the dex rung from any lending reading', () => {
+    // The other half of "no lending operation was renamed, added or removed":
+    // adding a rung to a SHARED ladder is only safe if the categories that did
+    // not ask for it cannot reach it. Every subset of lending's vocabulary,
+    // with and without neverOpened — 64 readings — and none classifies as
+    // `swapDisabled`.
+    const ops = Object.values(PoolOperation);
+    for (let mask = 0; mask < 1 << ops.length; mask++) {
+      const blocked = ops.filter((_, i) => mask & (1 << i));
+      for (const neverOpened of [false, true]) {
+        assert.notEqual(
+          toOperationalState(reading({ blocked, neverOpened })).level,
+          OperationalLevel.SwapDisabled,
+          `blocked=[${blocked.join(',')}] neverOpened=${neverOpened} reached a dex-only rung`,
+        );
+      }
+    }
   });
 });

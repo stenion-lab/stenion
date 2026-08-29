@@ -29,13 +29,20 @@ import type { CoverageEntry } from './coverage.ts';
 // two numbers are comparable only when the same rulebook produced them.
 
 /**
- * A category that does not exist yet.
+ * A category no entry actually carries.
  *
- * `ProtocolCategory` has exactly one member today, so the cross-category rules
- * have nothing real to test against — and a rule that gets its first test on the
- * day a second category lands is a rule that was never enforced. The cast is
- * confined to this constant, and nothing built from it reaches a score, a route,
- * or the database.
+ * `ProtocolCategory` has two members now — `dex` was registered with its
+ * rulebook (#100) — but **nothing is scored under `dex` yet**, so the board
+ * still receives one category's worth of entries and the cross-category rules
+ * still have nothing real to test against. A rule that gets its first test on
+ * the day a second category reaches the board is a rule that was never
+ * enforced, which is what this constant is for.
+ *
+ * Deliberately still a cast to a non-member rather than the real `'dex'`: using
+ * `'dex'` would make these tests pass for a category whose entries do not exist,
+ * and quietly stop testing the "unknown second category" case the day one does.
+ * The cast is confined to this constant, and nothing built from it reaches a
+ * score, a route, or the database.
  */
 const FUTURE_CATEGORY = 'amm' as ProtocolCategory;
 

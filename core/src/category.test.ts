@@ -77,12 +77,17 @@ describe('the category registry', () => {
   });
 
   it('contains exactly the categories that have a published rulebook', () => {
-    // ONE today. This assertion is not busywork: it is the thing that makes
-    // adding a category a deliberate act with a failing test attached, rather
-    // than a one-word edit that silently widens what the platform claims to
-    // score. Adding a member here without a METHODOLOGY.md section for it is
-    // the failure mode TAXONOMY.md (#79) exists to prevent.
-    assert.deepEqual([...PROTOCOL_CATEGORIES], ['lending']);
+    // TWO. This assertion is not busywork: it is the thing that makes adding a
+    // category a deliberate act with a failing test attached, rather than a
+    // one-word edit that silently widens what the platform claims to score.
+    // Adding a member here without a `methodology/<category>.md` section for it
+    // is the failure mode TAXONOMY.md (#79) exists to prevent — and it is
+    // `scoring.test.ts`'s "publishes a rulebook section for every category"
+    // that actually catches it.
+    //
+    // ORDER IS THE ORDER THEY WERE ADMITTED, not alphabetical: `lending` first
+    // because every scored market runs under it, `dex` second (#100).
+    assert.deepEqual([...PROTOCOL_CATEGORIES], ['lending', 'dex']);
   });
 
   it('has no duplicate members', () => {
@@ -127,6 +132,17 @@ describe('the category registry', () => {
     // after it, which would be false — and unrepairable, since risk_scores keeps
     // only outputs and no row can be recomputed to check.
     assert.equal(METHODOLOGY_VERSIONS.lending, 1);
+  });
+
+  it('starts dex at 1 on its own counter, not continuing lending’s', () => {
+    // Both read 1, and that is a coincidence of both being new rather than a
+    // statement that they are related. The point of the per-category map is that
+    // a category's FIRST published rulebook is its version 1, always — so a
+    // reviewer who bumps lending to 2 must not drag dex along, and a `dex` row
+    // stamped 1 must not be read as sharing anything with a `lending` row
+    // stamped 1. `risk_scores.category` is stored beside the integer for
+    // exactly this reason.
+    assert.equal(METHODOLOGY_VERSIONS.dex, 1);
   });
 
   it('agrees with the version METHODOLOGY.md publishes for each category', () => {

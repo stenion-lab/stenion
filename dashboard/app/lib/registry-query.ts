@@ -99,6 +99,10 @@ export const DEFAULT_CATEGORY: RegistryCategoryFilter = 'all';
  */
 export const CATEGORY_LABELS: Record<ProtocolCategory, string> = {
   lending: 'Lending',
+  // Matches `CATEGORY_FACTORS.dex.label` in core, which is also the heading of
+  // its section in methodology/dex.md — one word for one category, wherever a
+  // reader meets it. No entry carries this category yet.
+  dex: 'Dex',
 };
 
 /** Query strings longer than this are a paste accident or an attack, not a search. */
