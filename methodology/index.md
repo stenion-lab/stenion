@@ -39,10 +39,13 @@ category, and the changelog behind each lives in that category's own section:
 `lending` v1 are two different rulebooks rather than two editions of one, and neither is older than
 the other. The category and the number together identify a rulebook; the number alone does not.
 
-**Dex, methodology v1 — published, not yet in use.** The three-factor AMM rulebook in
-[Dex](dex.md#dex). **Nothing is scored under it and no run has been stamped with it:** its weight
-table is deliberately deferred (a separate review), and its size floor is an open item, both
-recorded in that section rather than filled in with plausible numbers. It is published now because
+**Dex, methodology v1 — published, not yet in use.** The two-factor AMM rulebook in
+[Dex](dex.md#dex) — `adminKeySafety` and `assetControlSafety`. **Nothing is scored under it and no
+run has been stamped with it:** its weight table is deliberately deferred to a separate review,
+recorded in that section rather than filled in with plausible numbers. A third factor,
+`depthSafety`, was proposed and **deferred**: Aquarius publishes no unit of value to denominate a
+trade size in, and every way of inventing one is either a fabricated anchor or a permanent choice
+made on one protocol's data. It is published now because
 [`../TAXONOMY.md`](../TAXONOMY.md) requires a category's rulebook to be reviewable _before_ an
 adapter is written against it.
 

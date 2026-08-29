@@ -435,12 +435,25 @@ Roughly in priority order, but not committed to dates:
     that fits how each one actually fails, not stretching the lending model over them:
     - **DEXs / AMMs** (Soroswap, Phoenix, Aquarius) — **rulebook submitted and admitted (#100);
       see [`methodology/dex.md`](methodology/dex.md).** The `dex` category is registered, versioned at 1
-      on its own counter, and published in full — three factors: `depthSafety` (the pool's own
-      `estimate_swap` simulation), `adminKeySafety` (seven named roles plus the two-step upgrade
-      deadline, sharing lending's factor key deliberately) and `assetControlSafety` (whether a SAC
-      issuer can freeze or claw back what the pool holds). **Nothing is scored under it yet**: its
-      weight table is a separate review (#102) and its size floor is an open item, both recorded in
-      that section rather than guessed.
+      on its own counter, and published in full — **two** factors: `adminKeySafety` (seven named
+      roles plus the two-step upgrade deadline, sharing lending's factor key deliberately) and
+      `assetControlSafety` (whether a SAC issuer can freeze or claw back what the pool holds).
+      **Nothing is scored under it yet**: its weight table is a separate review (#102).
+
+      **A third factor, `depthSafety`, was proposed and deferred** — the pool's own `estimate_swap`
+      simulation, which is the strongest read available and still cannot ship. Aquarius publishes no
+      unit of value, so there is nothing to denominate a trade size in: a pool-relative size is a
+      closed form that does not contain the reserves, so all 272 constant-product pools at one fee
+      tier would score identically, and an absolute size would be a number Stenion chose rather than
+      one the chain states. Deciding it now would also be **irreversible** — a published depth
+      denomination becomes what stored scores mean, and history is never backfilled across a bump —
+      whereas adding the factor later is additive and lands as a labelled version bump. Revisit when
+      a second dex protocol exists to calibrate against, rather than designing a category rulebook
+      around one protocol's shape.
+
+      The consequence is stated in the rulebook rather than left implicit: a `dex` score is a
+      **governance-and-asset-control** score, not a liquidity score, and depth is published as an
+      ungraded disclosure so the measurement is still visible.
 
       Two of the three candidates named here when this bullet was written were **rejected on
       measured grounds**, and the reasoning is in `methodology/dex.md` so they are not re-proposed.

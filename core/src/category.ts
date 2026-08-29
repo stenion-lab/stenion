@@ -73,7 +73,7 @@ export type ProtocolCategory = (typeof PROTOCOL_CATEGORIES)[number];
  *     history stamped 2 while a briefly-live v2 was in this constant before the
  *     rulebook was flattened back. See METHODOLOGY.md, "Current version".
  *
- * `dex: 1` — the three-factor AMM rulebook admitted in #100
+ * `dex: 1` — the two-factor AMM rulebook admitted in #100
  *     (`methodology/dex.md`). **Its own counter, with no relation to lending's.**
  *     Both read 1 today and that is a coincidence of both being new, not a
  *     statement that they are the same rulebook or that a `dex` v1 score is

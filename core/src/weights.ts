@@ -20,7 +20,7 @@
  * every place a new category must be registered.
  *
  * TWO ENTRIES, AND ONLY ONE OF THEM IS WEIGHTED. `lending` is published in full;
- * `dex` (#100) declares its three factors and their labels with **no weights at
+ * `dex` (#100) declares its two factors and their labels with **no weights at
  * all**, because weights are a type-(b) judgment call under TAXONOMY.md Gate 1
  * and belong to their own review (#102) rather than being guessed alongside the
  * factor set. That is not a gap left implicit — see `CategoryFactors`, which
@@ -140,15 +140,29 @@ export const CATEGORY_FACTORS = {
   },
 
   /**
-   * The DEX rulebook's three factors, admitted by #100 and published in
+   * The DEX rulebook's two factors, admitted by #100 and published in
    * `methodology/dex.md`. **Weights deliberately absent — see #102.**
    *
-   * Three, not five. `utilizationSafety`, `liquiditySafety` and `oracleSafety`
+   * TWO, NOT FIVE. `utilizationSafety`, `liquiditySafety` and `oracleSafety`
    * have no referent at all in a spot AMM: there is no borrow ledger and no cap,
    * `(supplied − borrowed) / supplied` is identically 1 for every pool, and
    * Aquarius reads no oracle — price comes from reserves or from tick state.
    * Reusing them would publish a number computed from nothing. `dex.md` records
    * that argument in full, and TAXONOMY.md Gate 0 is what required it.
+   *
+   * TWO, NOT THREE — `depthSafety` IS DEFERRED, NOT REJECTED. The rulebook
+   * proposed it as the third factor and it is absent here because open question
+   * A resolved to option 4: Aquarius has no on-chain unit of value to denominate
+   * a trade size in, and every way of inventing one either fabricates a price
+   * from mutable pool state or leaves 192 of 340 pools unscorable on the
+   * category's flagship factor. It is not declared, because a declared factor
+   * with no formula is a promise the rulebook does not keep.
+   *
+   * The decision was made on REVERSIBILITY. Adding a factor to a live category
+   * later is additive and lands as a labelled version bump; walking back a
+   * published depth denomination would mean revising stored scores, which this
+   * project's own no-backfill rule forbids outright. Full argument, and why
+   * options 1+3 and 2 were both declined, in `methodology/dex.md`.
    *
    * `adminKeySafety` IS THE SAME KEY LENDING USES, DELIBERATELY. It is not a
    * rephrasing of a lending factor — the question "who can change the rules"
@@ -166,7 +180,6 @@ export const CATEGORY_FACTORS = {
     label: 'Dex',
     status: 'pendingWeights',
     factors: {
-      depthSafety: { label: 'Executable depth' },
       adminKeySafety: { label: 'Admin key control' },
       assetControlSafety: { label: 'Issuer asset control' },
     },

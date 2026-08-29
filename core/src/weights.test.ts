@@ -143,7 +143,7 @@ describe('the per-category factor declarations', () => {
     assert.equal(CATEGORY_FACTORS.dex.status, 'pendingWeights');
   });
 
-  it("declares dex's three factors, sharing adminKeySafety's key with lending", () => {
+  it("declares dex's two factors, sharing adminKeySafety's key with lending", () => {
     // Open question B on #100, resolved as: one name for one question, computed
     // from different data on each side (Aquarius's seven roles plus an upgrade
     // deadline; a lending pool's single admin's signer set). The shared key is
@@ -151,13 +151,26 @@ describe('the per-category factor declarations', () => {
     // comparability claim, since scores are not comparable across categories
     // whatever the keys are called.
     assert.deepEqual(Object.keys(CATEGORY_FACTORS.dex.factors), [
-      'depthSafety',
       'adminKeySafety',
       'assetControlSafety',
     ]);
     assert.ok(
       'adminKeySafety' in CATEGORY_FACTORS.lending.factors,
       'the shared key is only shared while lending still declares it',
+    );
+  });
+
+  it('does not declare depthSafety — it is deferred, and a declaration is a promise', () => {
+    // Open question A resolved to option 4: no depth factor until Aquarius has an
+    // on-chain unit of value to denominate a trade size in. Declaring the key
+    // anyway — as a placeholder, or "so the taxonomy is complete" — would publish
+    // a factor the rulebook has no formula for, which is the same class of claim
+    // as a placeholder weight. It arrives, if it arrives, as a labelled version
+    // bump on a live category.
+    assert.ok(
+      !('depthSafety' in CATEGORY_FACTORS.dex.factors),
+      'depthSafety is deferred (open question A, option 4) and must not be declared ' +
+        'until methodology/dex.md publishes a formula and a trade size for it',
     );
   });
 
