@@ -2,7 +2,7 @@
 /* global console, process, URL */
 //
 // Capture a live mainnet snapshot of an adapter's raw on-chain state, for use as
-// a frozen regression fixture (adapters/fixtures/*.json).
+// a frozen regression fixture (adapters/fixtures/**/*.ts).
 //
 // This is a MANUAL tool. It hits Soroban RPC and Horizon, so it is never run by
 // CI and is not part of `pnpm test` — the fixtures it produces are committed and
@@ -20,6 +20,7 @@
 //   pnpm capture:fixture kinetic
 //   pnpm capture:fixture yieldblox
 //   pnpm capture:fixture etherfuse
+//   pnpm capture:fixture aquarius        (all four Aquarius pools)
 //   pnpm capture:fixture all
 //
 // `blend`, `yieldblox` and `etherfuse` are three POOLS behind one adapter, not
@@ -29,6 +30,13 @@
 // reserve set. The shared engine is exactly what makes all three worth having —
 // a decode regression that the three tidy Fixed reserves happen to survive shows
 // up in YieldBlox's eight.
+//
+// NOT EVERY ADAPTER SCORES. AquariusAdapter fetches and stops there — the dex
+// rulebook publishes no weight table yet (#101/#102), so its computeRiskFactors
+// and score throw by design. Targets carry `scorable`, and an unscorable one
+// captures the raw shape and skips the factor summary rather than being excluded
+// from fixtures entirely: the raw shape is exactly what needs freezing while the
+// decode work is fresh, and it is what #103 will score against.
 //
 // Requires the workspace to be built (`pnpm --filter @stenion/adapters build`)
 // and STENION_RPC_URL / STENION_HORIZON_URL in the repo-root .env or the shell.
@@ -91,8 +99,9 @@ function toLiteral(value) {
 
 async function main() {
   const which = (process.argv[2] ?? '').toLowerCase();
-  if (!['blend', 'kinetic', 'yieldblox', 'etherfuse', 'all'].includes(which)) {
-    console.error('Usage: pnpm capture:fixture <blend|kinetic|yieldblox|etherfuse|all>');
+  const VALID = ['blend', 'kinetic', 'yieldblox', 'etherfuse', 'aquarius', 'all'];
+  if (!VALID.includes(which)) {
+    console.error(`Usage: pnpm capture:fixture <${VALID.join('|')}>`);
     process.exitCode = 2;
     return;
   }
@@ -120,25 +129,116 @@ async function main() {
     blend: {
       type: 'BlendRawData',
       module: 'blend',
+      scorable: true,
       make: () => new mod.BlendAdapter({ ...opts, pool: mod.BLEND_FIXED_V2 }),
     },
     kinetic: {
       type: 'KineticRawData',
       module: 'kinetic',
+      scorable: true,
       make: () => new mod.KineticAdapter(opts),
     },
     yieldblox: {
       type: 'BlendRawData',
       module: 'blend',
+      scorable: true,
       make: () => new mod.BlendAdapter({ ...opts, pool: mod.BLEND_YIELDBLOX_V2 }),
     },
     etherfuse: {
       type: 'BlendRawData',
       module: 'blend',
+      scorable: true,
       make: () => new mod.BlendAdapter({ ...opts, pool: mod.BLEND_ETHERFUSE_V2 }),
     },
+
+    // ---- Aquarius (dex) ----------------------------------------------------
+    //
+    // FOUR POOLS BEHIND ONE ADAPTER, chosen to exercise every branch the fetch
+    // layer has, because live Aquarius state is otherwise monotonous — all 340
+    // pools share one admin posture, so a single fixture would freeze almost
+    // nothing. `scorable: false` on all four: the dex rulebook has no weight
+    // table, so AquariusAdapter's scoring methods throw by design (#101).
+    //
+    //   constant-product  two SAC tokens, real reserves, 100 bps
+    //   stable            THREE tokens — the no-hardcoded-pair rule, exercised
+    //                     rather than asserted (3 of 304 token sets are these)
+    //   concentrated      where get_reserves() means the total across all tick
+    //                     ranges rather than the tradable balance
+    //   wasm-token        holds a non-SAC token, the only branch that produces a
+    //                     route-(a) `notApplicable` issuer disclosure
+    'aquarius-constant-product': {
+      type: 'AquariusRawData',
+      module: 'aquarius',
+      dir: 'aquarius',
+      scorable: false,
+      make: () =>
+        new mod.AquariusAdapter({
+          ...opts,
+          pool: {
+            id: 'aquarius-xlm-aqua',
+            name: 'Aquarius XLM/AQUA',
+            poolId: 'CCSY43EHJAHT3NQDYKAMJXRFBEEH7OXDL3J3VNGO33UUSEXWNN27GBIZ',
+          },
+        }),
+    },
+    'aquarius-stable': {
+      type: 'AquariusRawData',
+      module: 'aquarius',
+      dir: 'aquarius',
+      scorable: false,
+      make: () =>
+        new mod.AquariusAdapter({
+          ...opts,
+          pool: {
+            id: 'aquarius-stable-3',
+            name: 'Aquarius 3-token stable',
+            poolId: 'CD6VHCKSUPGQVQPEQUI6EAEO6Z4PXMFTPHW3UTAOF7W4UF7TH7ZSKZBG',
+          },
+        }),
+    },
+    'aquarius-concentrated': {
+      type: 'AquariusRawData',
+      module: 'aquarius',
+      dir: 'aquarius',
+      scorable: false,
+      make: () =>
+        new mod.AquariusAdapter({
+          ...opts,
+          pool: {
+            id: 'aquarius-concentrated',
+            name: 'Aquarius XLM/AQUA concentrated',
+            poolId: 'CA4HTZNY2RBZWEQE5GBMNREZMFRPAZSVJ6OGPC7T3VM7NHRJYFAVID2S',
+          },
+        }),
+    },
+    'aquarius-wasm-token': {
+      type: 'AquariusRawData',
+      module: 'aquarius',
+      dir: 'aquarius',
+      scorable: false,
+      make: () =>
+        new mod.AquariusAdapter({
+          ...opts,
+          pool: {
+            id: 'aquarius-wasm-token',
+            name: 'Aquarius pool holding a wasm token',
+            poolId: 'CA262ONRV6P2IZPFVCTQNIU5XZIPZE4RLZNSOVJUNFUWDQR6MBNKS3IB',
+          },
+        }),
+    },
   };
-  const names = which === 'all' ? ['blend', 'kinetic', 'yieldblox', 'etherfuse'] : [which];
+  const AQUARIUS = [
+    'aquarius-constant-product',
+    'aquarius-stable',
+    'aquarius-concentrated',
+    'aquarius-wasm-token',
+  ];
+  const names =
+    which === 'all'
+      ? ['blend', 'kinetic', 'yieldblox', 'etherfuse', ...AQUARIUS]
+      : which === 'aquarius'
+        ? AQUARIUS
+        : [which];
 
   mkdirSync(FIXTURE_DIR, { recursive: true });
 
@@ -149,16 +249,31 @@ async function main() {
       `Capturing ${name} (${adapter.metadata.contractId}) from ` +
         `${opts.rpcUrl ?? '(adapter default RPC)'} …`,
     );
+    const started = Date.now();
     const raw = await adapter.fetchRawData();
+    const fetchMs = Date.now() - started;
 
-    const factors = await adapter.computeRiskFactors(raw);
-    const score = adapter.score(factors).score;
+    // An adapter with no rulebook behind it cannot be asked for a number. See
+    // the header: `scorable: false` is a property of the CATEGORY's rulebook,
+    // not of this pool.
+    const factors = target.scorable ? await adapter.computeRiskFactors(raw) : null;
+    const score = factors === null ? null : adapter.score(factors).score;
 
     // The captured-at stamp is metadata only — nothing reads it at test time.
     // `fetchedAt` *inside* the raw data is what price ages are measured
     // against, and freezing that is what keeps the freshness score stable.
     const typeName = target.type;
-    const constName = `${name}Mainnet`;
+    const constName = `${name.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}Mainnet`;
+    // A target may nest its fixtures in a subfolder — `aquarius/` holds four,
+    // which is enough to be worth grouping. The folder already says which
+    // adapter they belong to, so the filename drops the redundant prefix while
+    // the EXPORTED CONST keeps it: `aquariusStableMainnet` has to stay
+    // unambiguous at an import site, where the folder is not visible.
+    const outDir = target.dir ? resolve(FIXTURE_DIR, target.dir) : FIXTURE_DIR;
+    const fileBase =
+      target.dir && name.startsWith(`${target.dir}-`) ? name.slice(target.dir.length + 1) : name;
+    // ../ per level from the fixture back up to adapters/.
+    const upToAdapters = target.dir ? '../../' : '../';
     const source = `// Frozen mainnet snapshot — generated by scripts/capture-fixture.mjs.
 //
 // DO NOT HAND-EDIT. Regenerate with \`pnpm capture:fixture ${name}\`, then re-derive
@@ -166,24 +281,34 @@ async function main() {
 // why before committing — that is the entire point of this file.
 //
 // Captured: ${new Date().toISOString()}
-// At capture time this scored: safetyScore ${score} (${Object.entries(factors)
-      .map(([k, f]) => `${k} ${f === null ? 'null' : f.value}`)
-      .join(', ')})
+// ${
+      factors === null
+        ? 'Not scored at capture time: this category publishes no weight table yet, so ' +
+          'the adapter scoring methods throw by design. This fixture freezes the RAW SHAPE.'
+        : `At capture time this scored: safetyScore ${score} (${Object.entries(factors)
+            .map(([k, f]) => `${k} ${f === null ? 'null' : f.value}`)
+            .join(', ')})`
+    }
 //
 // \`satisfies\` is load-bearing: if ${typeName} gains a required field, this file
 // stops compiling rather than quietly feeding the adapter a stale shape.
 
-import type { ${typeName} } from '../${target.module}.ts';
+import type { ${typeName} } from '${upToAdapters}${target.module}/index.ts';
 
 export const ${constName} = ${toLiteral(raw)} satisfies ${typeName};
 `;
 
-    const file = resolve(FIXTURE_DIR, `${name}-mainnet.ts`);
+    mkdirSync(outDir, { recursive: true });
+    const file = resolve(outDir, `${fileBase}-mainnet.ts`);
     writeFileSync(file, source, 'utf8');
 
     console.log(`  → ${file}`);
-    console.log(`    reserves: ${raw.reserves.length}, safetyScore: ${score}`);
-    for (const [key, f] of Object.entries(factors)) {
+    // `reserves` is Blend/Kinetic's word for it; Aquarius calls the same thing
+    // reserves too, but nothing here may assume a field that a future adapter
+    // has no equivalent of.
+    const size = Array.isArray(raw.reserves) ? `reserves: ${raw.reserves.length}, ` : '';
+    console.log(`    ${size}fetch: ${fetchMs}ms, safetyScore: ${score ?? 'n/a (not scorable)'}`);
+    for (const [key, f] of Object.entries(factors ?? {})) {
       console.log(`    ${key.padEnd(19)} ${f === null ? 'null' : f.value}`);
     }
     console.log('    (run `pnpm format` to normalize the generated file)');
