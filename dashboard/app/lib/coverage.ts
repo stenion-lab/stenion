@@ -100,19 +100,57 @@ export type CoverageStatus =
   /** Not live on Stellar mainnet yet, so there is nothing to read. */
   | 'awaiting-mainnet'
   /**
-   * Not a lending protocol. The five *Safety factors are lending-specific by
-   * design, and no taxonomy exists for other categories yet.
+   * No rulebook is published for this protocol's category. A category is scored
+   * on its own factors under its own weights, and one that has none has nothing
+   * to be scored against.
    *
-   * DELIBERATELY EMPTY AT LAUNCH. The ecosystem protocols this would cover
-   * (Soroswap, Aquarius, FxDAO, DeFindex and the rest) carry a weaker claim
+   * DELIBERATELY EMPTY AT LAUNCH, AND STILL EMPTY. The ecosystem protocols this
+   * would cover (Soroswap, FxDAO, DeFindex and the rest) carry a weaker claim
    * than the entries below: we categorised them from their own public
-   * descriptions and never read their contracts. Seven such entries beside four
-   * real investigations would let the weaker claim free-ride on the stronger
-   * one. They arrive when the category expansion in ROADMAP.md is genuinely
-   * underway, at which point "not in scope yet" comes with taxonomy work to
-   * point at. Kept in the union so that is a data change, not a refactor.
+   * descriptions and never read their contracts. Several such entries beside
+   * four real investigations would let the weaker claim free-ride on the
+   * stronger one. They arrive when the category expansion in ROADMAP.md is
+   * genuinely underway, at which point "not in scope yet" comes with taxonomy
+   * work to point at. Kept in the union so that is a data change, not a
+   * refactor.
+   *
+   * AQUARIUS WAS ON THAT LIST AND HAS BEEN REMOVED (#104). It can never land in
+   * this status again: `dex` has a published rulebook and one Aquarius market is
+   * scored under it, so "no taxonomy exists for this category" is now false of
+   * it. Its unregistered markets are `awaiting-capacity` below, which is a
+   * different statement — the rules exist and the slots do not. Leaving the name
+   * here would have described a state the codebase can no longer be in.
    */
-  | 'out-of-category';
+  | 'out-of-category'
+  /**
+   * Scorable under a published rulebook, and unregistered because the indexer
+   * has no target slot left.
+   *
+   * THE ONLY MEMBER HERE THAT IS A STATEMENT ABOUT STENION RATHER THAN ABOUT THE
+   * MARKET (#104), and it is spelled as one. Every other status says something
+   * we read on chain and could not grade. This one says the opposite: the
+   * rulebook applies, the reads work, the number would be as true of these
+   * markets as of the one that is scored — and a scoring cycle runs inside
+   * Vercel Hobby's 60s `maxDuration`, which at the shipped attempt timeout and
+   * concurrency allows five targets in total.
+   *
+   * Deliberately NOT folded into `below-size-floor`, which would be a lie twice
+   * over: `dex` has no size floor (methodology/dex.md, "Size floor: none, and
+   * none pending") because neither of its factors is size-sensitive, and the
+   * unregistered markets include the largest pools in the protocol.
+   *
+   * It is a state that ends by someone buying capacity or lowering the per-target
+   * cost, not by the protocol changing anything — which is why the copy must not
+   * imply a finding about the markets it lists.
+   *
+   * THE WAY OUT IS TRACKED IN ROADMAP.md, not here. All three scheduling dials
+   * are at their limits (budget at 50s against a 60s hard ceiling, concurrency
+   * pinned at 1 by the RPC 429 incident, attempt timeout already lowered once),
+   * so nothing can be registered — of any category — until sharding or staggered
+   * scheduling lands. This status is what that looks like from the registry;
+   * ROADMAP.md's blocker is what it looks like as work.
+   */
+  | 'awaiting-capacity';
 
 export interface CoverageEntry {
   /** slug — the anchor id on /registry, and the key deduped against the live leaderboard */
@@ -228,6 +266,12 @@ export const COVERAGE_STATUS_META: Record<
     blurb:
       'Known, and on the list to evaluate. There is no mainnet deployment to read, so there is nothing to score — and nothing yet confirmed about whether it would be scorable when there is.',
   },
+  'awaiting-capacity': {
+    heading: 'Scorable, and waiting on indexer capacity',
+    chip: 'no target slot yet',
+    blurb:
+      'Nothing about these markets stops them being scored. A rulebook covers them, their contracts read normally, and the number would be exactly as true of them as of the market from the same protocol that is scored. What is missing is a slot: one scoring cycle runs inside a serverless function with a hard sixty-second ceiling, and every registered market has to get a full attempt inside it, which caps how many can be indexed at all. This is a statement about Stenion’s capacity and not a finding about these markets — it ends when the capacity changes, and nothing the protocol does affects it.',
+  },
   'out-of-category': {
     heading: 'Outside the current scoring category',
     chip: 'no taxonomy yet',
@@ -247,6 +291,7 @@ export const COVERAGE_STATUS_ORDER: readonly CoverageStatus[] = [
   'oracle-not-gradable',
   'below-size-floor',
   'awaiting-mainnet',
+  'awaiting-capacity',
   'out-of-category',
 ];
 
@@ -409,6 +454,37 @@ export const COVERAGE: readonly CoverageEntry[] = [
     verify:
       'Resolve the oracle from the pool’s Config (CBMGLKUQ…) and call resolution() — it returns 43200 — then base(), assets() and decimals(). List its exports with getContractMethods and confirm no max_age, oracles or asset_configs, and read the doc comments on decimals and set_resolution, which state the two SEP-40 deviations. Then simulate lastprice(Asset::Stellar(addr)) for each address from the pool’s get_reserve_list and compare each returned timestamp against the current ledger close time to reproduce the spread of feed ages.',
     asOf: '2026-08-26',
+  },
+  {
+    id: 'aquarius-unregistered-markets',
+    // NO COUNT IN THE NAME, deliberately. The name renders on the registry row
+    // where a scored entry renders its score, and "Aquarius (339 pools)" puts a
+    // three-digit number in that position — exactly the "not scored" read as
+    // "scored badly" this section is built to prevent. The count is a dated
+    // measurement and lives in `reason` beside `asOf`, like every other figure.
+    name: 'Aquarius (its unregistered markets)',
+    status: 'awaiting-capacity',
+    // No mark self-hosted, and none borrowed: the only logo Aquarius publishes
+    // is hotlinked from its own stellar.toml. The initials tile is the designed
+    // fallback, here as on the scored entry.
+    logo: null,
+    links: { site: 'https://aqua.network', docs: 'https://docs.aqua.network' },
+    // The AMM router, which is what was read to enumerate them. Not any one
+    // pool: this entry is about every pool the router lists except the one that
+    // is scored, so a single pool address would misdescribe it.
+    contractId: 'CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK',
+    summary:
+      'Every Aquarius pool is scorable under the published DEX rulebook; the indexer has room for one of them, and the rest are unregistered for want of a target slot rather than for anything found in them.',
+    reason: [
+      'Aquarius runs many more markets than Stenion has room to index. Reading the router’s own get_pools_for_tokens_range across all 304 of its token sets returns 340 pools — 272 constant-product, 42 stableswap and 26 concentrated — each running one of exactly three wasm hashes the router itself declares. One of them, the XLM/USDC constant-product pool, is registered and scored. This entry covers the other 339.',
+      'They are not excluded for size, and there is no size threshold behind this. The DEX rulebook publishes no market-size floor and has none pending, because neither factor it scores depends on how much a pool holds: the seven privileged roles and the pending-upgrade deadline read the same on a pool holding three stroops as on one holding millions, and whether an issuer can freeze the pool’s balance does not depend on the size of that balance. A number computed for any of these pools would be as true of it as the one published for the market that is scored. Registration is a separate question, and the answer to it is capacity.',
+      'The capacity is a hard arithmetic limit rather than a preference. One scoring cycle runs as a single serverless function invocation with a sixty-second ceiling that cannot be raised on the tier this project runs on, and the cycle’s own budget is set below that so a run is never killed halfway — a cycle cut off mid-flight can leave one market scored and another neither scored nor recorded as failed, which is worse than a clean failure. Inside that budget every registered market must be able to get one full attempt, and at the shipped attempt timeout and concurrency that allows five markets in total. Four are lending markets that were already registered. The fifth is the Aquarius pool that is scored.',
+      'Which pool took the slot was decided on what could be graded rather than on size alone. The largest Aquarius pool by far holds a token that is a plain Soroban contract rather than a Stellar Asset Contract, so it has no issuer flags to read and one of its two reserves would be disclosed rather than graded — a number computed from half the market. The registered pool’s two reserves are both Stellar Asset Contracts, so nothing in its issuer-control factor is excluded.',
+      'Nothing here is a judgment about any of these markets, and nothing here should be read as one. Several of them are larger than the one that is scored. This entry exists so that the single Aquarius row on the registry is not mistaken for the whole of Aquarius, and it ends when Stenion has the capacity to index more — not when anything about Aquarius changes.',
+    ],
+    verify:
+      'Call get_tokens_sets_count() on the Aquarius AMM router (CBQDHNBF…) via Soroban RPC — it returns 304 — then get_pools_for_tokens_range(start, end) over that range, which returns each token set with a map of pool-hash to pool address; the map entries total 340. Read each pool contract’s instance entry to get its running wasm hash, and compare against ConstantPoolHash / StableSwapPoolHash / ConcentratedPoolHash in the router’s own instance storage to classify it. Reserves come from get_reserves() on each pool contract, never from the pools plane. Which market Stenion scores is AQUARIUS_POOLS in adapters/aquarius/types.ts.',
+    asOf: '2026-08-29',
   },
   {
     id: 'nectar-network',

@@ -17,6 +17,18 @@ definitions. Their responses are verbatim bodies from a snapshot taken at
 > truth — which is the entire reason these are captures. Until that recapture, read the tables as
 > current and the bodies as one deploy behind on this one field.
 
+> **A second `category` is now scored, and no example body here shows one yet.** Registering the
+> first `dex` market (#104) means `/v1/protocols` returns entries whose `category` is `dex`, and
+> whose `factors` object has **two** keys rather than lending's five —
+> `adminKeySafety` and `assetControlSafety`. The field tables say so and
+> [the `factors` section](protocol-by-id.md#the-factors-object) explains how to read a factor map
+> whose keys you do not recognise. The bodies do not, because they are captures and the change is
+> not deployed at the time of writing; the dex entry's shape was verified end-to-end over HTTP
+> against a real indexer cycle, but not against production, and a local capture is not a production
+> capture. **Re-`curl` `/v1/protocols` and `/v1/protocol/aquarius-xlm-usdc` from production once
+> this deploys**, and delete this note. Until then, read the tables as current and every example
+> body as lending-only.
+
 The coverage example was `curl`ed from production on **2026-08-25T18:20Z**.
 
 One consequence of "verbatim" worth knowing before you diff these against the field tables: the keys
@@ -62,8 +74,12 @@ that actually matters:
 **A methodology change is not an API change.** If we change a formula, a threshold, or a weight,
 `safetyScore` is still a 0–100 number meaning the same thing, so the contract holds and the version
 does not move. What moves is `methodologyVersion` in the response body — see
-[The score](conventions.md#the-score). A change to the factor _taxonomy_, though — renaming or removing one of the
-five factors — is breaking, and would be a `v2`.
+[The score](conventions.md#the-score). A change to the factor _taxonomy_, though — renaming or
+removing a factor an existing category publishes — is breaking, and would be a `v2`. **Admitting a
+new category, with its own factor keys, is additive and stays on `v1`**: no existing entry's shape
+changes, and a client that iterates `factors` by its own keys reads the new one correctly. That is
+why the [`factors` section](protocol-by-id.md#the-factors-object) tells you to iterate rather than
+index.
 
 ---
 

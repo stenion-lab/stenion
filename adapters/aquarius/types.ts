@@ -127,15 +127,105 @@ export interface AquariusPool {
 }
 
 /**
- * NO POOL IS REGISTERED YET, and there is deliberately no `AQUARIUS_POOLS`
- * constant here.
+ * The XLM/USDC constant-product pool — the one Aquarius market registered (#104).
  *
- * Which pools to register is a reviewed decision (#104) that depends on a size
- * census, and #101's non-goals put registration out of scope. Shipping an empty
- * or speculative registry array would invite `buildTargets` to iterate it. The
- * fixture-capture script names its pools directly, which is what that script is
- * for.
+ * WHY ONE, AND WHY THIS ONE. Not because the rulebook excludes the other 339:
+ * `dex` has **no size floor and no pending one** (`methodology/dex.md`,
+ * "Size floor: none, and none pending"), because neither factor it scores is
+ * size-sensitive — the same seven roles and the same issuers read on a pool
+ * holding three stroops. Registration is a separate question about the indexer,
+ * and the indexer's answer is a hard number: `cycleFeasibility()` allows
+ * `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs`, and at
+ * concurrency 1, a 10s attempt timeout and a budget that must stay inside
+ * Vercel Hobby's 60s `maxDuration`, that ceiling is **five targets**. Four are
+ * lending. So the ceiling on this list is deployment capacity, not the census.
+ *
+ * The census is real and was re-read for this decision at ledger 64,182,824 on
+ * 2026-08-29: 340 pools across 304 token sets, 272 constant_product / 42 stable
+ * / 26 concentrated, 46 holding zero in every reserve, 148 XLM-paired of which
+ * 18 hold zero XLM and 59 hold under one. Every one of them is scorable; 339 of
+ * them are unregistered for want of a target slot, and that is what
+ * `dashboard/app/lib/coverage.ts` says in the reader's terms.
+ *
+ * WHY THIS POOL, given exactly one slot: it is the deepest market
+ * whose reserves are **both** gradable. Both tokens are Stellar Asset Contracts,
+ * so nothing in `assetControlSafety` is excluded as a route-(a) disclosure — the
+ * larger XLM/SolvBTC pool (21.4M XLM) holds a wasm token and would publish a
+ * number computed from one of its two legs. Verified per pool against #104's
+ * checklist at ledger 64,182,918 on 2026-08-29:
+ *
+ *   pool_type()               constant_product
+ *   running wasm              ae0da5a8…de9852 — equals the router's own
+ *                             `ConstantPoolHash`, read from its instance storage
+ *   router's own listing      get_pools([XLM, USDC]) returns 4 pools; this is one
+ *   get_reserves()            94,684,565,381,855 XLM · 16,992,377,778,125 USDC
+ *                             (read from the POOL contract, never the plane)
+ *   reserve token 1           CAS3J7GY… executable = contractExecutableStellarAsset,
+ *                             METADATA.name = "native" — XLM, no issuer account
+ *   reserve token 2           CCW67TSZ… SAC, METADATA.name =
+ *                             "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+ *                             issuer home_domain = circle.com, flags
+ *                             auth_revocable = true, clawback/immutable/required false
+ *   kill switches             swap/deposit/claim all false; emergency_mode false
+ *
+ * THE LOOK-ALIKE CHECK IS NOT A FORMALITY. The registry holds two assets coded
+ * `USDC`: Circle's `GA5ZSEJY…` (`home_domain = circle.com`) and a differently
+ * issued `GCBYVQH3…`. This entry is pinned to the pool CONTRACT, and the issuer
+ * above was read out of that pool's own reserve token — never matched by symbol.
+ *
+ * `deployedOn` IS DELIBERATELY ABSENT — see the decision recorded with it below.
  */
+export const AQUARIUS_XLM_USDC: AquariusPool = {
+  id: 'aquarius-xlm-usdc',
+  name: 'Aquarius XLM/USDC',
+  poolId: 'CA6PUJLBYKZKUEKLZJMKBZLEKP2OTHANDEOWSFF44FTSYLKQPIICCJBE',
+  links: {
+    // Chain-attested in the Etherfuse manner, not matched by name: the AQUA
+    // issuer GBNZILST… publishes `home_domain = aqua.network` on-chain, and that
+    // domain's SEP-1 stellar.toml carries ORG_NAME "Aquarius", ORG_URL
+    // "https://aqua.network/" and a [[CURRENCIES]] entry naming the same issuer.
+    // `docs.` is a subdomain of that attested apex (200 on 2026-08-29), the same
+    // relationship BLEND_FIXED_V2 and BLEND_ETHERFUSE_V2 use for theirs.
+    site: 'https://aqua.network',
+    docs: 'https://docs.aqua.network',
+  },
+  // NO `logo`, AND THAT IS A DESIGNED STATE. The only mark Aquarius publishes is
+  // hotlinked from its own stellar.toml (`ORG_LOGO`), and both hotlinking and
+  // redrawing a wordmark to fit a tile are forbidden (ProtocolMetadata.logo).
+  // The dashboard draws an initials tile, which is the supported answer.
+  //
+  // NO `deployedOn`, DECIDED RATHER THAN OMITTED (#104). The field means "this
+  // entry is a market running ANOTHER protocol's contracts" — YieldBlox on
+  // Blend. An Aquarius pool runs Aquarius's contracts, so setting it would be a
+  // category error, and it is the same reading under which Blend's own Fixed
+  // pool (one market of several, on Blend's code) carries none. Three concrete
+  // things decided it against setting `{ host: 'Aquarius', … }` anyway:
+  //   1. `DeploymentNotice`'s published copy states the market's "reserves,
+  //      oracle configuration and admin belong to this market and not to
+  //      {host}". For an Aquarius pool the admin is Aquarius's own global role
+  //      set — identical across all 340 — so the sentence would be FALSE.
+  //   2. The badge and the notice both render "a {label}", which is ungrammatical
+  //      for every label beginning "Aquarius…".
+  //   3. What a reader actually needs to know — that this is one of 340 markets
+  //      on one of three shared wasms — is a verifiable observation nobody
+  //      grades, which is what the Findings section exists for. It is published
+  //      there (`dashboard/app/lib/protocol-notes.ts`), where it can be stated
+  //      precisely instead of compressed into a pill.
+  // The entry's NAME carries the rest: "Aquarius XLM/USDC" names a pair, not a
+  // protocol.
+};
+
+/**
+ * The Aquarius markets the indexer scores. Iterated by `buildTargets`, exactly
+ * as `BLEND_POOLS` is, so registering a market is one entry here and nothing in
+ * the indexer.
+ *
+ * ONE ENTRY IS NOT A PLACEHOLDER — it is the target budget, spent. Adding a
+ * second requires a deployed per-target `durationMs` for this one and then a
+ * LOWERED `STENION_ATTEMPT_TIMEOUT_MS`, not a raised budget: the budget is
+ * already at 50s against a 60s hard ceiling. See `architecture/deploy-architecture.md`.
+ */
+export const AQUARIUS_POOLS: readonly AquariusPool[] = [AQUARIUS_XLM_USDC];
 
 // ---------------------------------------------------------------------------
 // The raw shape

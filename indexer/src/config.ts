@@ -199,21 +199,57 @@ export function loadConfig(cwd: string = process.cwd()): IndexerConfig {
     retryAttempts: optionalPositiveInt('STENION_RETRY_ATTEMPTS', 3),
     retryBaseDelayMs: optionalPositiveInt('STENION_RETRY_BASE_DELAY_MS', 1000),
     // 10s, lowered from 15s once the deployed function was actually measured:
-    // nothing healthy exceeds 6.1s there (ARCHITECTURE.md), so 15s was sized
+    // nothing healthy exceeds 6.1s there (architecture/), so 15s was sized
     // against a developer machine's much slower path to the RPC. The shorter cap
-    // is what makes a SEQUENTIAL cycle feasible up to four targets
-    // (4 x 10s = 40s <= 42s), which is how the 429 incident was resolved without
-    // giving back the deadline guarantee #68 bought.
+    // is what makes a SEQUENTIAL cycle feasible at all, which is how the 429
+    // incident was resolved without giving back the deadline guarantee #68
+    // bought.
+    //
+    // UNCHANGED BY THE FIRST DEX TARGET (#104), and that is a decision. Lowering
+    // it to 8.4s would have bought the fifth target inside the old 42s budget
+    // without touching anything else — and it was rejected, because an Aquarius
+    // attempt is the longest one in the registry. Its request count is 22 RPC +
+    // 15 Horizon (measured in #101, machine-independent) against Kinetic's 27
+    // RPC, and the deployed function's observed rate is 150-235ms per request,
+    // which puts an Aquarius attempt somewhere in 5.5-8.7s. A cap inside that
+    // range would time out a healthy target on a slow day. The budget moved
+    // instead; see below.
     //
     // LOCAL DEV CAVEAT: a developer machine has been seen taking 12.5s on
     // YieldBlox, which exceeds this cap — a local `pnpm indexer` may now time out
     // and retry where it used to succeed first time. Raise it in .env if that
     // bites; production is the case this default is sized for.
     attemptTimeoutMs: optionalPositiveInt('STENION_ATTEMPT_TIMEOUT_MS', 10_000),
-    // 42s, not the 48s the arithmetic alone allows: there are no observed cycle
-    // durations from the deployed function yet, so this errs toward the ceiling
-    // being safe. Raise it once the Vercel logs show real headroom.
-    cycleBudgetMs: optionalPositiveInt('STENION_CYCLE_BUDGET_MS', 42_000),
+    // 50s, raised from 42s in #104 — AGAINST OBSERVED DEPLOYED DURATIONS, which
+    // is the only condition under which CLAUDE.md permits raising it, and the
+    // condition the previous comment here set ("raise it once the Vercel logs
+    // show real headroom"). Three cycles curl'ed from the deployed cron route on
+    // 2026-08-29, concurrency 1, four lending targets:
+    //
+    //   totalMs 15,482 / 15,627 / 16,759   HTTP wall 17.3s / 17.7s
+    //   per target: blend 2,412-3,049 · etherfuse 3,007-3,249 ·
+    //               yieldblox 3,676-3,934 · kinetic 4,991-6,363
+    //
+    // So the real cycle uses ~16s of the budget and the function's own overhead
+    // beyond the cycle (route entry, DB connect and upserts, response) is
+    // 1.0-1.7s. A cycle can never run PAST the budget — `targetDeadline` caps
+    // every target at `budgetEndsAt` — so the worst-case function wall is
+    // budget + overhead, i.e. ~52s against Vercel Hobby's 60s `maxDuration`.
+    // The ceiling is still load-bearing and still respected, with ~8s of margin.
+    //
+    // WHY IT HAD TO MOVE AT ALL. `cycleFeasibility()` requires
+    // `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs`. At
+    // concurrency 1 and a 10s attempt, 42s allowed exactly FOUR targets — the
+    // four already registered — so registering any dex market at all made the
+    // cycle infeasible, independently of which market it was. 50s allows five,
+    // exactly, and 5 x 10,000 = 50,000 <= 50,000 passes rather than warning.
+    //
+    // THIS IS THE LAST TARGET THE BUDGET CAN BUY. A sixth needs 60s, which is
+    // the hard ceiling, so it cannot come from here — it has to come from a
+    // lower attempt timeout justified by a deployed Aquarius `durationMs`, or
+    // from concurrency, which needs its own measured RPC-tolerance test (see
+    // cycleConcurrency below and the 429 incident in architecture/).
+    cycleBudgetMs: optionalPositiveInt('STENION_CYCLE_BUDGET_MS', 50_000),
     // 1. This shipped as 2 and was reverted to 1 the same day, on measurement:
     // concurrency 2 drew sustained `429`s from mainnet.sorobanrpc.com, the free
     // shared public endpoint (blend failed 3 of 7 clean cycles against 0 of 105

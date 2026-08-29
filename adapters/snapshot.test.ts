@@ -54,12 +54,13 @@ import {
   BlendAdapter,
 } from './blend/index.ts';
 import { KineticAdapter } from './kinetic/index.ts';
-import { AquariusAdapter } from './aquarius/index.ts';
+import { AQUARIUS_POOLS, AQUARIUS_XLM_USDC, AquariusAdapter } from './aquarius/index.ts';
 import type { AquariusPool } from './aquarius/index.ts';
 import { blendMainnet } from './fixtures/blend-mainnet.ts';
 import { etherfuseMainnet } from './fixtures/etherfuse-mainnet.ts';
 import { kineticMainnet } from './fixtures/kinetic-mainnet.ts';
 import { yieldbloxMainnet } from './fixtures/yieldblox-mainnet.ts';
+import { aquariusXlmUsdcMainnet } from './fixtures/aquarius/xlm-usdc-mainnet.ts';
 import { aquariusConstantProductMainnet } from './fixtures/aquarius/constant-product-mainnet.ts';
 import { aquariusStableMainnet } from './fixtures/aquarius/stable-mainnet.ts';
 import { aquariusConcentratedMainnet } from './fixtures/aquarius/concentrated-mainnet.ts';
@@ -558,17 +559,30 @@ describe('all three Blend pools — one engine, three markets', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * The four captured pools, each paired with the identity an adapter instance
+ * The five captured pools, each paired with the identity an adapter instance
  * would be handed.
  *
- * DECLARED HERE RATHER THAN IMPORTED, because there is deliberately no
- * `AQUARIUS_POOLS` constant: which markets to register is a reviewed decision
- * that depends on a size census (#104), and shipping a speculative registry
- * array would invite `buildTargets` to iterate it. Each `poolId` is read off the
+ * THE FIRST ENTRY IS THE REGISTERED MARKET and its identity is IMPORTED from
+ * `AQUARIUS_POOLS` (#104), not written out here — a snapshot that pinned a
+ * hand-typed pool would keep passing after the registry moved to a different
+ * one, which is the failure this file exists to catch. The other four are branch
+ * fixtures for markets nothing publishes a number about, so they declare the
+ * identity an adapter instance would be handed; each `poolId` is read off the
  * fixture itself, so an adapter here can never be pointed at a pool the numbers
  * did not come from.
+ *
+ * The expected values are re-derived by hand, never copied from the capture
+ * run — see the arithmetic beside each assertion below.
  */
 const AQUARIUS_SNAPSHOTS = [
+  {
+    label: 'REGISTERED — constant_product XLM/USDC',
+    pool: AQUARIUS_XLM_USDC,
+    raw: aquariusXlmUsdcMainnet,
+    adminKeySafety: 10,
+    assetControlSafety: 40,
+    score: 24,
+  },
   {
     label: 'constant_product XLM/AQUA',
     pool: {
@@ -619,7 +633,53 @@ const AQUARIUS_SNAPSHOTS = [
   },
 ] as const;
 
-describe('Aquarius — frozen mainnet snapshots, all four pool shapes', () => {
+/**
+ * One snapshot by label.
+ *
+ * BY LABEL, NOT BY INDEX. The assertions below each need a SPECIFIC pool — the
+ * three-token stable one, the one holding a wasm token — and reading them out of
+ * the array positionally meant that inserting the registered market at the front
+ * (#104) silently repointed four tests at different pools, three of which then
+ * failed and one of which would have kept passing while covering nothing. A name
+ * cannot be shifted by an insertion.
+ */
+const snapshot = (label: (typeof AQUARIUS_SNAPSHOTS)[number]['label']) => {
+  const found = AQUARIUS_SNAPSHOTS.find((s) => s.label === label);
+  assert.ok(found, `no Aquarius snapshot labelled ${label}`);
+  return found;
+};
+
+describe('Aquarius — frozen mainnet snapshots, every captured pool', () => {
+  it('captures the market the indexer actually scores, not one beside it', () => {
+    // The registry is the source of truth for what is published, so the snapshot
+    // that pins published numbers has to be pinned to it. If AQUARIUS_POOLS gains,
+    // loses or repoints an entry, this fails rather than going quietly stale.
+    assert.deepEqual(
+      AQUARIUS_POOLS.map((p) => p.id),
+      ['aquarius-xlm-usdc'],
+      'one Aquarius market is registered — the cycle budget allows a fifth target and no sixth',
+    );
+    assert.equal(
+      aquariusXlmUsdcMainnet.poolId,
+      AQUARIUS_XLM_USDC.poolId,
+      'the fixture was captured from the pool contract the registry names',
+    );
+    // Chain-attested identity, frozen with the reading: the running wasm is the
+    // hash the router declares for constant_product, and the reserve tokens are
+    // Circle's USDC (not the look-alike GCBYVQH3… also coded USDC) and native XLM.
+    assert.equal(aquariusXlmUsdcMainnet.poolType, 'constant_product');
+    assert.equal(
+      aquariusXlmUsdcMainnet.upgrade.runningWasm,
+      'ae0da5a84b15805c5c7931ac567a8d1b34be3f26b483993d9ff80cb2c3de9852',
+    );
+    const issuer = aquariusXlmUsdcMainnet.reserveTokens[1]?.issuer;
+    assert.equal(issuer?.status, 'read');
+    assert.equal(
+      issuer?.status === 'read' ? issuer.issuer : null,
+      'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+    );
+  });
+
   for (const snap of AQUARIUS_SNAPSHOTS) {
     it(`produces exactly the factor map captured with it — ${snap.label}`, async () => {
       const factors = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
@@ -634,6 +694,16 @@ describe('Aquarius — frozen mainnet snapshots, all four pool shapes', () => {
       // failure separates "a factor moved" from "the weighting moved":
       //   10x0.55 + 70x0.45 = 37.0 -> 37
       //   10x0.55 + 40x0.45 = 23.5 -> 24
+      //
+      // The registered XLM/USDC pool's two factors, re-derived rather than read
+      // off the capture log. adminKeySafety is the worst of seven roles across
+      // the pool and the router: Admin is 3 signers at high-threshold 2, so
+      // multisig, base 90, less min(30, 96x3) = 30 -> 60; the five single-key
+      // roles are base 40, of which RewardsAdmin and SystemFeeAdmin took 200 ops
+      // in 30d -> 40 - 30 = 10. Worst = 10, and no upgrade is pending so the
+      // reaction-window ceiling does not bind. assetControlSafety is the worst of
+      // two gradable reserves: native XLM has no issuer account -> 100, and
+      // Circle's USDC issuer has auth_revocable set -> 40. Worst = 40.
       const adapter = new AquariusAdapter({ pool: snap.pool });
       assert.equal(adapter.score(await adapter.computeRiskFactors(snap.raw)).score, snap.score);
     });
@@ -672,7 +742,7 @@ describe('Aquarius — frozen mainnet snapshots, all four pool shapes', () => {
     // of its name would misclassify the most common token in the registry. Here
     // it scores 100 — "nobody can seize this" — which is the opposite of what a
     // failed read scores.
-    const snap = AQUARIUS_SNAPSHOTS[0];
+    const snap = snapshot('constant_product XLM/AQUA');
     const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
     const xlm = f.assetControlSafety!.components!.find((c) => c.label === 'XLM')!;
     assert.equal(xlm.value, 100);
@@ -683,7 +753,7 @@ describe('Aquarius — frozen mainnet snapshots, all four pool shapes', () => {
     // Three reserves, scores 40 / 70 / 70, and the minimum is what publishes.
     // Circle's USDC really does carry `auth_revocable` — read from Horizon at
     // capture time, not asserted from documentation.
-    const snap = AQUARIUS_SNAPSHOTS[1];
+    const snap = snapshot('stable USDC/USDx/yUSDC (three tokens)');
     const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
     assert.equal(snap.raw.reserveTokens.length, 3);
     assert.deepEqual(
@@ -697,7 +767,7 @@ describe('Aquarius — frozen mainnet snapshots, all four pool shapes', () => {
     // The distinction methodology/dex.md calls the most dangerous confusion
     // available in this factor. The pool scores exactly what its one gradable
     // reserve scores; the wasm token is named with a null value.
-    const snap = AQUARIUS_SNAPSHOTS[3];
+    const snap = snapshot('stable USDC(SAC)/USDC(wasm)');
     const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
     assert.equal(snap.raw.reserveTokens[1]!.isStellarAsset, false);
     assert.deepEqual(
@@ -714,8 +784,8 @@ describe('Aquarius — frozen mainnet snapshots, all four pool shapes', () => {
     // the two XLM/AQUA pools — one constant-product, one concentrated — produce
     // the same numbers from the same code, and that quantity is never misread as
     // something it is not.
-    const cp = AQUARIUS_SNAPSHOTS[0];
-    const conc = AQUARIUS_SNAPSHOTS[2];
+    const cp = snapshot('constant_product XLM/AQUA');
+    const conc = snapshot('concentrated XLM/AQUA');
     assert.equal(conc.raw.poolType, 'concentrated');
     assert.notDeepEqual(conc.raw.reserves, cp.raw.reserves);
     assert.deepEqual(
@@ -724,8 +794,8 @@ describe('Aquarius — frozen mainnet snapshots, all four pool shapes', () => {
     );
   });
 
-  it('publishes operationalState active on all four without touching the factor map', async () => {
-    // The #15 rule on the newest category. None of the four captured pools has a
+  it('publishes operationalState active on every one without touching the factor map', async () => {
+    // The #15 rule on the newest category. None of the captured pools has a
     // kill switch set, so `active` here is a reading rather than a default; the
     // synthetic suite is what walks all 32 states.
     for (const snap of AQUARIUS_SNAPSHOTS) {

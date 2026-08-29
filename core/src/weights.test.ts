@@ -39,6 +39,10 @@ import { describe, it } from 'node:test';
 // value import, this file is where it shows up.
 import { PROTOCOL_CATEGORIES } from './category.ts';
 import { CATEGORY_FACTORS, DEX_FACTORS, LENDING_FACTORS } from './weights.ts';
+// Type-only, erased before Node sees this file — see the `FactorMapFor` block at
+// the bottom, which `pnpm typecheck` checks and the test runner never executes.
+import type { DexFactorMap, FactorMapFor } from './weights.ts';
+import type { Adapter } from './adapter.ts';
 
 const categories = () => Object.entries(CATEGORY_FACTORS);
 
@@ -198,3 +202,64 @@ describe('the per-category factor declarations', () => {
     assert.equal(DEX_FACTORS, CATEGORY_FACTORS.dex.factors);
   });
 });
+
+// ---------------------------------------------------------------------------
+// `FactorMapFor` — the type-level half, checked by `pnpm typecheck` (#104)
+//
+// THIS BLOCK ASSERTS NOTHING AT RUNTIME AND IS NOT MEANT TO. Everything below
+// is a type declaration, erased before Node's test runner sees the file. What
+// checks it is `tsconfig.check.json`, which typechecks sources and `*.test.ts`
+// together — so a `@ts-expect-error` here fails the build if the error it names
+// ever stops happening.
+//
+// It is the guard on the property #104's review added: which factors a category
+// scores is declared once, in `CATEGORY_FACTORS`, and an adapter derives its map
+// from the category it declares rather than naming one. Before that, both of the
+// mismatches below compiled — verified, not supposed — which is what turned the
+// review from "affirm" into "revise".
+// ---------------------------------------------------------------------------
+
+interface ProbeRaw {
+  n: number;
+}
+
+/**
+ * A dex adapter that tries to publish LENDING's factor map.
+ *
+ * This is the spelling that used to compile: `Adapter<ProbeRaw, 'dex',
+ * RiskFactorMap>` was legal, because the third parameter #103 added was never
+ * related to the category. Now the map is `FactorMapFor<'dex'>` and an
+ * incompatible override is what it is — an error, which the directive above
+ * requires to be present.
+ */
+// @ts-expect-error a dex adapter may not publish lending's factor map
+interface WrongCategoryMap extends Adapter<ProbeRaw, 'dex'> {
+  computeRiskFactors(raw: ProbeRaw): Promise<FactorMapFor<'lending'>>;
+}
+
+/** The other case that used to compile: keys no category's rulebook declares. */
+// @ts-expect-error `totallyMadeUpSafety` is in no category's factor set
+interface InventedKeys extends Adapter<ProbeRaw, 'dex'> {
+  computeRiskFactors(raw: ProbeRaw): Promise<{ totallyMadeUpSafety: null }>;
+}
+
+/** And the shape that IS right still is — no directive, so it must not error. */
+interface RightMap extends Adapter<ProbeRaw, 'dex'> {
+  computeRiskFactors(raw: ProbeRaw): Promise<FactorMapFor<'dex'>>;
+}
+
+/**
+ * `DexFactorMap` is a NAME for `FactorMapFor<'dex'>`, not a second definition.
+ * Mutual assignability, so neither direction can drift into a superset.
+ *
+ * Written as a type-level check with a real (erasable-safe) value behind it: a
+ * `declare const` would be erased before Node ran this file and leave a
+ * dangling reference, which is the one way a type-only probe can break a test
+ * runner that only strips types.
+ */
+type AliasIsDerived = DexFactorMap extends FactorMapFor<'dex'> ? true : never;
+type DerivedIsAlias = FactorMapFor<'dex'> extends DexFactorMap ? true : never;
+const mutuallyAssignable: [AliasIsDerived, DerivedIsAlias] = [true, true];
+
+export type _TypeProbes = [WrongCategoryMap, InventedKeys, RightMap];
+export const _valueProbes = mutuallyAssignable;

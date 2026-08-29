@@ -18,7 +18,13 @@
 // failing never aborts the cycle or process; a DB write failure is likewise
 // caught and logged so it can't kill the loop.
 
-import { BLEND_POOLS, BlendAdapter, KineticAdapter } from '@stenion/adapters';
+import {
+  AQUARIUS_POOLS,
+  AquariusAdapter,
+  BLEND_POOLS,
+  BlendAdapter,
+  KineticAdapter,
+} from '@stenion/adapters';
 import { closePool, createStore, getPool, type Store } from '@stenion/db';
 
 import { webhookNotifier } from './alerts';
@@ -83,9 +89,25 @@ function buildTargets(config: IndexerConfig): IndexTarget[] {
     rpcUrl: config.rpcUrl,
     horizonUrl: config.horizonUrl,
   });
+  // Aquarius (#104) — the first `dex` target, and the first target of any
+  // category other than lending. Same list-driven shape as BLEND_POOLS and for
+  // the same reason: every Aquarius market runs one of three wasms the router
+  // itself declares, so a second market is an entry in AQUARIUS_POOLS and no
+  // code here. One is registered today, and the ceiling is the cycle budget
+  // rather than the census — see AQUARIUS_POOLS and the feasibility warning
+  // below.
+  const aquarius = AQUARIUS_POOLS.map((pool) =>
+    toTarget(
+      new AquariusAdapter({
+        rpcUrl: config.rpcUrl,
+        horizonUrl: config.horizonUrl,
+        pool,
+      }),
+    ),
+  );
   // Slowest first — see `orderByLatency` in ./cycle for why that is the right
   // way round under a worker pool, and why it used to be the other way.
-  return orderByLatency([...blend, toTarget(kinetic)]);
+  return orderByLatency([...blend, toTarget(kinetic), ...aquarius]);
 }
 
 /**

@@ -7,7 +7,7 @@ commitment — priorities shift as protocols launch and as the project finds fun
 
 - **Continuous risk scoring for Stellar/Soroban lending protocols**, with a public, free, ranked
   registry sorted purely on `safetyScore` — payment-blind, no exceptions.
-- **Four markets scored end-to-end from live mainnet data — two protocols, four entries:**
+- **Five markets scored end-to-end from live mainnet data — three protocols, two categories:**
   - **[Blend](https://blend.capital)** — the flagship Fixed V2 pool (`CAJJZSGM…`). Reference
     implementation.
   - **[Kinetic / K2](https://k2lend.com)** — an Aave-V3-style single-pool-multi-asset protocol; the
@@ -18,6 +18,11 @@ commitment — priorities shift as protocols launch and as the project finds fun
     appears. See "Multi-pool Blend targeting" below.
   - **[Etherfuse](https://etherfuse.com)** (`CDMAVJPF…`) — a market **on Blend V2** lending against
     Etherfuse's own tokenized sovereign-bond assets (CETES, USTRY, TESOURO) alongside XLM and USDC.
+  - **[Aquarius](https://aqua.network) XLM/USDC** (`CA6PUJLB…`) — **the first entry of a second
+    category.** A constant-product AMM pool scored under the `dex` rulebook's two factors, not
+    lending's five, and ranked in its own block: `#` is scoped to one rulebook, so this is 01 of
+    dex rather than last of five. One market of Aquarius's 340; the rest are scorable and
+    unregistered for want of a target slot, and say so on the registry. See "Beyond lending" below.
     Same label, same adapter, third pool; a config entry and no new scoring code.
 
   **Four scored markets, not five.** The Blend V2 pool investigation (#65) found five unregistered
@@ -217,7 +222,67 @@ commitment — priorities shift as protocols launch and as the project finds fun
 
 ## Planned
 
-Roughly in priority order, but not committed to dates:
+Roughly in priority order, but not committed to dates. **The first item gates every other item that
+adds a market**, so it is first in fact and not only in presentation.
+
+- **BLOCKER — the registry is full at five targets. Nothing can be registered until scheduling is
+  solved.** Not "the next dex market"; **nothing**. Not a sixth Aquarius pool, not a fifth Blend
+  market, not a new adapter for a protocol that clears every gate in
+  [`TAXONOMY.md`](TAXONOMY.md) and passes every per-pool verification there is. Verification is no
+  longer what decides whether a market gets scored — capacity is, and capacity is exhausted.
+
+  **Why it is a hard stop and not a tight fit.** One scoring cycle is one serverless invocation.
+  `cycleFeasibility()` requires that every registered target can get one full attempt inside the
+  cycle budget:
+
+  ```
+  ceil(targets / concurrency) * STENION_ATTEMPT_TIMEOUT_MS <= STENION_CYCLE_BUDGET_MS
+  ```
+
+  At the shipped defaults — concurrency **1**, attempt timeout **10,000ms** — five targets need
+  `5 × 10,000 = 50,000ms`, and `STENION_CYCLE_BUDGET_MS` is **50,000**. It fits exactly, with zero
+  headroom. A sixth target needs **60,000ms**, and that is not a budget that can be granted: it
+  **is** Vercel Hobby's `maxDuration`, which cannot be raised on this tier, and a cycle killed
+  mid-flight can leave one market scored and another neither scored nor recorded as failed — worse
+  than a clean failure, which is the whole reason a budget below the ceiling exists.
+
+  **All three dials are already at their limit, and each is pinned by something measured:**
+
+  | Dial                         | Where it is | Why it cannot move                                                                                                                                                                                                                                 |
+  | ---------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `STENION_CYCLE_BUDGET_MS`    | 50,000      | Raised from 42,000 in #104 against three `curl`ed deployed cycles. 60,000 is the `maxDuration` ceiling itself, so the next step up is the cliff.                                                                                                   |
+  | `STENION_CYCLE_CONCURRENCY`  | 1           | Shipped at 2 and reverted the same day when `mainnet.sorobanrpc.com` — free, shared, keyless — started refusing the target behind the burst. Raising it again needs a **deployed** RPC-tolerance measurement, never an estimate.                   |
+  | `STENION_ATTEMPT_TIMEOUT_MS` | 10,000      | Already lowered 15s → 10s to buy the fourth target. The registry's most expensive attempt (an Aquarius pool: 37 requests against Blend's 16) sits at an estimated 5.5–8.7s deployed, so a lower cap would time out a healthy target on a slow day. |
+
+  **What actually unblocks it: sharding, or staggered scheduling.** Not a config change — a change
+  to what a cron invocation _is_. Today one POST scores every target; the fix is that a POST scores
+  a _subset_, with successive invocations covering the registry in rotation. Two shapes are worth
+  costing:
+
+  - **Sharding by target group** — the dex targets and the lending targets on separate invocations,
+    each with its own budget. Cheapest to reason about; makes the cron-job.org side two jobs instead
+    of one.
+  - **Round-robin over a stable order** — each invocation takes the `N` targets least recently
+    scored. Scales to any registry size without a second job, at the cost of making a protocol's
+    freshness a function of how many protocols there are.
+
+  **Whichever wins, `/api/v1/health` is the precondition**, and it already exists. A target skipped
+  by a shard has to go _visibly_ stale rather than silently — `staleMinutes` climbing on the status
+  page is the difference between "we score this every 15 minutes now" and "we quietly stopped
+  scoring this". The staleness threshold has to move with the cadence, or the endpoint starts
+  reporting `degraded` for a schedule working as designed.
+
+  **The cost is honest and has to be stated up front:** sharding trades freshness for coverage. A
+  five-minute cadence over three shards is a fifteen-minute worst case per market, and
+  "continuous, on-chain-derived risk scoring" is the pitch. That trade is a decision, not an
+  implementation detail — it is the reason this is a tracked blocker rather than a task someone
+  picks up quietly.
+
+  Until it is made, the honest answer to "can you score X?" is **yes, and it will not be
+  registered** — which is exactly what `coverage.ts`'s `awaiting-capacity` status says on the
+  registry, for the 339 Aquarius markets already in that position. See
+  [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md) for the deployed
+  measurements behind every number above.
 
 - **More protocol adapters.** The open contribution path (see [`CONTRIBUTING.md`](CONTRIBUTING.md)).
   The bar for a new **adapter** is unchanged: an _independently-scoreable native-Soroban lending
@@ -331,10 +396,15 @@ Roughly in priority order, but not committed to dates:
   an explicit checkable condition, survives as `cycleFeasibility()`.
 
   **The ceiling is now explicit:**
-  `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs` — four targets at the shipped
-  defaults, failing at five, logged as a `[budget]` warning naming the numbers and the levers rather
+  `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs` — **five** targets at today's shipped
+  defaults, failing at six, logged as a `[budget]` warning naming the numbers and the levers rather
   than discovered by someone adding a pool. Past it, behaviour degrades to whole attempts first-come
   with the tail failing cleanly and visibly on `/api/v1/health`, not a squeeze for everyone.
+
+  **That ceiling has since been reached.** #104 registered the fifth target and raised the budget
+  42s → 50s to fit it, which was the last raise available under the 60s `maxDuration`. The registry
+  is now full — see **the blocker at the top of this section**, which is where the exit from it is
+  tracked.
 
   **The RPC-load cost — and the estimate that was wrong.** Both adapters are strictly sequential
   internally, so one target in flight is one request in flight. Total requests per cycle are
@@ -358,10 +428,10 @@ Roughly in priority order, but not committed to dates:
   only under the division rule that has been removed. An unmeasured target sorts first, i.e. is
   assumed slowest.
 
-  Still open: **sharding targets across cron invocations**, if RPC rate limits ever make even a peak
-  of 2 unwelcome. `/api/v1/health` is what would make it shippable — a target skipped by a shard goes
-  visibly stale rather than silently — but it makes a protocol's freshness a function of registry
-  size, so it is a last resort rather than the next step.
+  Still open: **sharding targets across cron invocations** — written here as a contingency for RPC
+  rate limits, and promoted since to the blocker at the top of this section. It is no longer a last
+  resort held in reserve: with the budget at its ceiling and concurrency pinned at 1, it is the only
+  remaining way to register anything at all.
 
 - **An `AbortSignal` through `Adapter.fetchRawData`.** The per-attempt timeout is currently _soft_ —
   it races the attempt against a timer and abandons the loser rather than cancelling it, because no
@@ -433,45 +503,59 @@ Roughly in priority order, but not committed to dates:
     lending-specific by design — utilization against a borrow cap and liquidity headroom for
     withdrawals don't mean anything for an AMM. Scoring other categories means designing a taxonomy
     that fits how each one actually fails, not stretching the lending model over them:
-    - **DEXs / AMMs** (Soroswap, Phoenix, Aquarius) — **rulebook complete (#100 admitted the factor
-      set, #102 reviewed the weight table); see [`methodology/dex.md`](methodology/dex.md).** The
-      `dex` category is registered, versioned at 1 on its own counter, and published in full —
-      **two** factors: `adminKeySafety` at **0.55** (seven named roles plus the two-step upgrade
-      deadline, sharing lending's factor key deliberately) and `assetControlSafety` at **0.45**
-      (whether a SAC issuer can freeze or claw back what the pool holds), each with its formula, its
-      thresholds and a worked example computed from a captured mainnet fixture. **No size floor
-      exists and none is pending** — neither factor is size-sensitive, so there is nothing for one
-      to protect.
+    - **DEXs / AMMs** (Soroswap, Phoenix, Aquarius) — **SHIPPED for Aquarius: rulebook complete
+      (#100 admitted the factor set, #102 reviewed the weight table) and one market registered and
+      scored (#104).** See [`methodology/dex.md`](methodology/dex.md). The `dex` category is
+      versioned at 1 on its own counter and published in full — **two** factors: `adminKeySafety` at
+      **0.55** (seven named roles plus the two-step upgrade deadline, sharing lending's factor key
+      deliberately) and `assetControlSafety` at **0.45** (whether a SAC issuer can freeze or claw
+      back what the pool holds), each with its formula, its thresholds and a worked example computed
+      from a captured mainnet fixture. **No size floor exists and none is pending** — neither factor
+      is size-sensitive, so there is nothing for one to protect.
 
-      **Nothing is scored under it yet, and what is missing is now a registration rather than
-      code.** The Aquarius adapter's read half landed in #101 and its scoring half in #103:
-      `AquariusAdapter` implements both `dex` factors, `operationalState` on the `swapDisabled`
-      rung, and carries frozen mainnet snapshots for all four captured pool shapes — the
-      constant-product and concentrated XLM/AQUA pools at **37**, the three-token stable pool and
-      the wasm-token pool at **24**, the same four numbers the rulebook's worked example publishes.
-      Registering a pool is #104, which is itself blocked on a deployment decision, since one more
-      target makes the indexer cycle infeasible at `STENION_CYCLE_CONCURRENCY=1`.
+      **What is covered: one Aquarius market, `aquarius-xlm-usdc`.** The XLM/USDC constant-product
+      pool (`CA6PUJLB…`), scoring **24** — `adminKeySafety` 10, `assetControlSafety` 40 — and
+      carrying `category: 'dex'` and `methodology_version: 1` on every run. It renders as its own
+      ranked block on the registry, numbered 01 of dex, because a position numeral is scoped to one
+      rulebook (#78) and this is the first time that rule has had two categories to enforce it
+      against.
 
-      **#103 also touched one shared interface, and that change is NOT yet reviewed.** `Adapter`
-      still spelled `computeRiskFactors` and `score` against `RiskFactorMap` — lending's five-key
-      map — which is the one file #77 missed when it widened `scoreFactors` and `ScoreResult` over
-      `FactorMap`, and it made the first non-lending adapter unimplementable. It gained a third type
-      parameter, `TFactors`, defaulted to `RiskFactorMap` so both lending adapters and the indexer's
-      run loop are untouched; the four frozen lending snapshots were verified byte-identical either
-      side of it. `ADAPTER_INTERFACE_VERSION` stays at **3**: nothing an implementor must react to
-      changed. It was resolved to unblock #103 rather than argued on its merits, so the decision
-      record — with the alternatives and the open question it leaves — is in
-      [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md), and **#104 should
-      review it rather than inherit it.**
+      **What is NOT covered: the other 339 Aquarius pools, and every other DEX.** The census, re-read
+      at ledger 64,182,824 on 2026-08-29, is 340 pools across 304 token sets — 272 constant-product,
+      42 stableswap, 26 concentrated, of which 46 hold zero in every reserve. Every one of them is
+      **scorable**; 339 are unregistered because the indexer has five target slots and four were
+      already lending. That is a capacity statement and it is published as one, through
+      `coverage.ts`'s `awaiting-capacity` status. Soroswap and Phoenix are separate investigations
+      needing their own contract reads, and are deliberately **not** listed as `out-of-category` —
+      that status means "no rulebook exists", which is no longer true of a DEX.
 
-      **`@stenion/db` was deliberately left alone, and therefore cannot store a `dex` score yet.**
-      The jsonb column and the write path are key-agnostic, so the storage round-trips — but
-      `RunRecord.factors`, `ProtocolDetail.factors` and `HistoryEntry.factors` are all declared
-      `RiskFactorMap`, so passing a two-key `dex` map to `recordRun` is a compile error. That is the
-      desirable failure: #104 stops at the compiler instead of writing a row whose declared type is
-      a lie. Widening those three, and deciding what `getProtocolDetail`'s
-      `row.factors as RiskFactorMap` cast becomes, is #104's call — it changes the published
-      `factors` shape on the API.
+      **The registry ceiling is now the deploy, not the rulebook, and it is a tracked blocker.**
+      `cycleFeasibility()` requires `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs`; at
+      concurrency 1 and a 10s attempt timeout that is five targets against the 50s budget, and a
+      sixth would need 60s, which **is** Vercel Hobby's `maxDuration`. So a second dex market cannot
+      be bought with a bigger budget — and neither can anything else, of any category. That is the
+      blocker at the top of this section; the deployed measurements the 42s → 50s raise was made
+      against are in
+      [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md).
+
+      **The `Adapter` interface change #103 left unreviewed has been reviewed, and revised.** #103
+      added a third type parameter, `TFactors`, to make the first non-lending adapter compile at all,
+      and flagged the decision as unreviewed. #104 found the parameter was never tied to `TCategory`
+      — `Adapter<Raw, 'dex', RiskFactorMap>` compiled, so a dex adapter could publish lending's five
+      factors, and so could one with invented keys. The factor map is now **derived** from the
+      category, `FactorMapFor<TCategory>`, read straight out of `CATEGORY_FACTORS`, so an adapter
+      cannot disagree with its own rulebook. `ADAPTER_INTERFACE_VERSION` is **4**. The four frozen
+      lending snapshots and both lending adapters are byte-identical either side of it. Decision
+      record, with the two #103 claims it corrects, in
+      [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md).
+
+      **`@stenion/db` now carries any category's factor map.** `RunRecord.factors`,
+      `ProtocolDetail.factors` and `HistoryEntry.factors` are `FactorMap`, and
+      `getProtocolDetail`'s read-side cast asserts only the non-null the `risk_scores_shape` CHECK
+      guarantees — it used to assert lending's five keys, which would have handed `undefined` to
+      anything reading `.oracleSafety` off a dex row. Storage was always key-agnostic; the types
+      were the lie. Proven by a `dex` write/read round-trip through a real Postgres in
+      `store.integration.test.ts`, not through `JSON.stringify`.
 
       **A third factor, `depthSafety`, was proposed and deferred** — the pool's own `estimate_swap`
       simulation, which is the strongest read available and still cannot ship. Aquarius publishes no
@@ -485,8 +569,7 @@ Roughly in priority order, but not committed to dates:
       around one protocol's shape.
 
       The consequence is stated in the rulebook rather than left implicit: a `dex` score is a
-      **governance-and-asset-control** score, not a liquidity score, and depth is published as an
-      ungraded disclosure so the measurement is still visible.
+      **governance-and-asset-control** score, not a liquidity score.
 
       Two of the three candidates named here when this bullet was written were **rejected on
       measured grounds**, and the reasoning is in `methodology/dex.md` so they are not re-proposed.
@@ -498,8 +581,6 @@ Roughly in priority order, but not committed to dates:
       real problem from a normal one. Only _liquidity depth against realistic trade size_ survived,
       and it survived because the pool's own contract computes it.
 
-    - **CDP / stablecoins** (FxDAO) — collateralization ratio, liquidation mechanism health, peg
-      stability.
     - **Yield vaults** (DeFindex, Wellspring, Hoops Finance) — strategy transparency, underlying
       protocol exposure (a vault routing into Blend inherits Blend's risk), withdrawal liquidity.
 

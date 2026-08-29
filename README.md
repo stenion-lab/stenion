@@ -8,15 +8,23 @@
 
 ## What Stenion is
 
-Stenion continuously scores the safety of Stellar/Soroban DeFi protocols — starting with
-lending protocols ([Blend](https://blend.capital) and [Kinetic/K2](https://k2lend.com)) — by
-reading their state **directly from the chain** and turning it into a single, comparable
-`safetyScore` (0–100, higher = safer), broken down into five risk factors.
+Stenion continuously scores the safety of Stellar/Soroban DeFi protocols — lending
+([Blend](https://blend.capital), [Kinetic/K2](https://k2lend.com)) and now AMMs
+([Aquarius](https://aqua.network)) — by reading their state **directly from the chain** and turning
+it into a single, comparable `safetyScore` (0–100, higher = safer), broken down into that
+category's risk factors.
 
-Scoring is per **market**, not per brand: four entries across those two protocols today — Blend's
-own Fixed pool, Kinetic, and the YieldBlox and Etherfuse pools on Blend V2. A market running another
-protocol's contracts is labelled as one everywhere it appears — the registry ranks what is actually
-deployed, and never lets a pool pass for a protocol.
+Scoring is per **market**, not per brand: five entries across those three protocols today — Blend's
+own Fixed pool, Kinetic, the YieldBlox and Etherfuse pools on Blend V2, and Aquarius's XLM/USDC
+pool. A market running another protocol's contracts is labelled as one everywhere it appears — the
+registry ranks what is actually deployed, and never lets a pool pass for a protocol.
+
+**Each category has its own rulebook, and scores are only comparable inside one.** Lending is
+scored on five factors; the `dex` rulebook scores two, because utilization against a borrow cap and
+free-liquidity depth mean nothing for an AMM and reusing them would publish a number computed from
+nothing. So the registry ranks each category in its own block, numbered from 01 within itself —
+there is no cross-category ordering anywhere, because two scores produced by different rules are
+not comparable.
 
 It is **not** a TVL tracker. [DefiLlama](https://defillama.com) already covers TVL for Stellar.
 The thing Stenion measures that a TVL dashboard and a one-time audit both miss is **risk that
@@ -29,8 +37,14 @@ moves every block**:
 - **Liquidity depth** — how much could be withdrawn before a reserve is drained?
 - **Utilization headroom** — how close is borrowing to the protocol's own stress line?
 
+Those five are lending's. An AMM fails differently, so the `dex` rulebook asks two different
+questions instead — **who can change the rules** (Aquarius's seven privileged roles and the
+two-step upgrade deadline that says how long an LP has to react) and **who can seize what the pool
+holds** (whether a reserve's issuer has `auth_revocable` or `auth_clawback_enabled` set). Both
+rulebooks are in [`methodology/`](methodology/index.md).
+
 A static audit is a snapshot of one moment. TVL tells you how much is at stake, not how safe it
-is. Stenion re-derives all five factors from on-chain data on a short interval, so the number you
+is. Stenion re-derives every factor from on-chain data on a short interval, so the number you
 see reflects the protocol **now**, not at audit time.
 
 ## The rules that make the number trustworthy

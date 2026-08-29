@@ -124,7 +124,7 @@ const COMPUTED_AT = new Date('2026-08-16T10:00:00.000Z');
  * would read as a claim about a fake protocol. The rules that turn on a real
  * state are tested in @stenion/core and in the adapters.
  */
-const OPERATIONAL_STATE: OperationalState = {
+const OPERATIONAL_STATE: OperationalState<'lending'> = {
   level: OperationalLevel.Active,
   source: 'fake',
   blocked: [],
@@ -379,8 +379,16 @@ describe('runCycle — the ok record', () => {
 });
 
 describe('toTarget — the adapter pipeline wrapper', () => {
-  /** A minimal adapter with its own raw shape, to prove TRawData stays internal. */
-  function fakeAdapter(id: string, calls: string[]): Adapter<{ n: number }> {
+  /**
+   * A minimal adapter with its own raw shape, to prove TRawData stays internal.
+   *
+   * `Adapter<{ n: number }, 'lending'>` — the category is spelled since #104,
+   * because the factor map is derived from it. A bare `Adapter<{ n: number }>`
+   * defaults the category to the whole union, so its factor map is the union of
+   * every category's and `RiskFactorMap` is no longer what it owes. Naming the
+   * category is the fix, and it is the same thing every real adapter does.
+   */
+  function fakeAdapter(id: string, calls: string[]): Adapter<{ n: number }, 'lending'> {
     return {
       metadata: {
         id,
@@ -388,7 +396,7 @@ describe('toTarget — the adapter pipeline wrapper', () => {
         chain: 'stellar',
         category: 'lending',
         adapterRef: 'FakeAdapter',
-      } as ProtocolMetadata,
+      } as ProtocolMetadata<'lending'>,
       async fetchRawData() {
         calls.push('fetchRawData');
         return { n: 1 };
@@ -436,14 +444,14 @@ describe('toTarget — the adapter pipeline wrapper', () => {
     // build is free to rewrite is what made the test worthless. Naming the class
     // `MinifiedToSomethingElse` means this can only pass if the literal on
     // `metadata` is the thing being persisted.
-    class MinifiedToSomethingElse implements Adapter<{ n: number }> {
+    class MinifiedToSomethingElse implements Adapter<{ n: number }, 'lending'> {
       metadata = {
         id: 'blend',
         name: 'Blend',
         chain: 'stellar',
         category: 'lending',
         adapterRef: 'BlendAdapter',
-      } as ProtocolMetadata;
+      } as ProtocolMetadata<'lending'>;
       async fetchRawData() {
         return { n: 1 };
       }
@@ -453,7 +461,7 @@ describe('toTarget — the adapter pipeline wrapper', () => {
       score(factors: RiskFactorMap): RiskScoreResult {
         return { score: 1, factors, computedAt: COMPUTED_AT };
       }
-      operationalState(): OperationalState {
+      operationalState(): OperationalState<'lending'> {
         return OPERATIONAL_STATE;
       }
     }
@@ -595,26 +603,41 @@ describe('cycleWaves + cycleFeasibility — the ceiling is arithmetic, not folkl
     assert.equal(cycleWaves(4, 0), 4);
   });
 
-  it('holds at four targets and fails at five, on the shipped defaults', () => {
+  it('holds at five targets and fails at six, on the shipped defaults', () => {
     // This is the number the whole change exists to make checkable, and these
-    // ARE the shipped defaults — 42s budget, 10s attempt timeout, 1 at a time.
+    // ARE the shipped defaults — 50s budget, 10s attempt timeout, 1 at a time.
     // Keep them in step with config.ts: a test asserting a ceiling from numbers
     // the indexer no longer runs is worse than no test, because it still passes.
     const at = (targetCount: number) =>
-      cycleFeasibility({ targetCount, concurrency: 1, attemptTimeoutMs: 10_000, budgetMs: 42_000 });
+      cycleFeasibility({ targetCount, concurrency: 1, attemptTimeoutMs: 10_000, budgetMs: 50_000 });
 
-    assert.equal(at(3).feasible, true, 'three targets is today; it must not warn every cycle');
+    assert.equal(at(4).feasible, true, 'the four lending targets, unchanged');
     assert.equal(
-      at(4).feasible,
+      at(5).feasible,
       true,
-      'four targets is #65/Etherfuse — ready without a config change',
+      'five targets is #104 — the four lending markets plus one Aquarius pool',
     );
-    assert.equal(at(5).feasible, false);
+    assert.equal(at(6).feasible, false);
     assert.deepEqual(
-      { waves: at(5).waves, requiredMs: at(5).requiredMs },
-      { waves: 5, requiredMs: 50_000 },
-      'five targets needs 50s of attempts against a 42s budget',
+      { waves: at(6).waves, requiredMs: at(6).requiredMs },
+      { waves: 6, requiredMs: 60_000 },
+      'a sixth target needs 60s of attempts, which IS the maxDuration ceiling — ' +
+        'so it can never come from the budget',
     );
+  });
+
+  it('was infeasible at five on the pre-#104 budget, which is why the budget moved', () => {
+    // The state #101 measured and #104 had to resolve: at the old 42s budget,
+    // registering ANY dex market at all made the cycle infeasible, whichever
+    // market it was. Pinned so the reason the default changed stays checkable
+    // after the default itself has moved on.
+    const old = cycleFeasibility({
+      targetCount: 5,
+      concurrency: 1,
+      attemptTimeoutMs: 10_000,
+      budgetMs: 42_000,
+    });
+    assert.equal(old.feasible, false, '5 x 10s = 50s > 42s');
   });
 
   it('would have warned every cycle at the old 15s timeout, which is why it moved', () => {

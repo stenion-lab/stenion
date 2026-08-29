@@ -20,7 +20,8 @@
 //   pnpm capture:fixture kinetic
 //   pnpm capture:fixture yieldblox
 //   pnpm capture:fixture etherfuse
-//   pnpm capture:fixture aquarius        (all four Aquarius pools)
+//   pnpm capture:fixture aquarius        (all five Aquarius pools)
+//   pnpm capture:fixture aquarius-xlm-usdc   (one of them — see AQUARIUS below)
 //   pnpm capture:fixture all
 //
 // `blend`, `yieldblox` and `etherfuse` are three POOLS behind one adapter, not
@@ -31,12 +32,13 @@
 // a decode regression that the three tidy Fixed reserves happen to survive shows
 // up in YieldBlox's eight.
 //
-// NOT EVERY ADAPTER SCORES. AquariusAdapter fetches and stops there — its
-// score.ts has not been written (#103), so its computeRiskFactors and score
-// throw by design. Targets carry `scorable`, and an unscorable one
-// captures the raw shape and skips the factor summary rather than being excluded
-// from fixtures entirely: the raw shape is exactly what needs freezing while the
-// decode work is fresh, and it is what #103 will score against.
+// EVERY ADAPTER SCORES AGAIN as of #103, AquariusAdapter included. Targets still
+// carry `scorable`, and it still means "this category has a published rulebook a
+// number can come from" rather than anything about the pool — an unscorable
+// target captures the raw shape and skips the factor summary rather than being
+// excluded from fixtures. It is kept because the two-step category admission
+// TAXONOMY.md requires (factor set, then weight table) puts the next category
+// through the same state Aquarius passed through in #101.
 //
 // Requires the workspace to be built (`pnpm --filter @stenion/adapters build`)
 // and STENION_RPC_URL / STENION_HORIZON_URL in the repo-root .env or the shell.
@@ -99,7 +101,19 @@ function toLiteral(value) {
 
 async function main() {
   const which = (process.argv[2] ?? '').toLowerCase();
-  const VALID = ['blend', 'kinetic', 'yieldblox', 'etherfuse', 'aquarius', 'all'];
+  // Aquarius's five pools are individually addressable for the reason blend /
+  // yieldblox / etherfuse are: they are five markets behind one adapter, and
+  // re-capturing all five to refresh one would silently refresh four frozen
+  // fixtures whose snapshot expectations then have to be re-derived. A refresh
+  // is a reviewed diff, so it has to be possible to ask for exactly one.
+  const AQUARIUS = [
+    'aquarius-xlm-usdc',
+    'aquarius-constant-product',
+    'aquarius-stable',
+    'aquarius-concentrated',
+    'aquarius-wasm-token',
+  ];
+  const VALID = ['blend', 'kinetic', 'yieldblox', 'etherfuse', 'aquarius', ...AQUARIUS, 'all'];
   if (!VALID.includes(which)) {
     console.error(`Usage: pnpm capture:fixture <${VALID.join('|')}>`);
     process.exitCode = 2;
@@ -153,12 +167,16 @@ async function main() {
 
     // ---- Aquarius (dex) ----------------------------------------------------
     //
-    // FOUR POOLS BEHIND ONE ADAPTER, chosen to exercise every branch the fetch
-    // layer has, because live Aquarius state is otherwise monotonous — all 340
-    // pools share one admin posture, so a single fixture would freeze almost
-    // nothing. `scorable: false` on all four: the dex rulebook has no weight
-    // table, so AquariusAdapter's scoring methods throw by design (#101).
+    // FIVE POOLS BEHIND ONE ADAPTER. Four are chosen to exercise every branch
+    // the fetch layer has, because live Aquarius state is otherwise monotonous —
+    // all 340 pools share one admin posture, so a single fixture would freeze
+    // almost nothing. The fifth is the REGISTERED market (#104), which is a
+    // different job: those four are branch coverage and this one is the pool the
+    // public registry actually publishes a number about.
     //
+    //   xlm-usdc          THE REGISTERED POOL — read from AQUARIUS_POOLS, so the
+    //                     fixture can never be captured from a pool the registry
+    //                     does not score
     //   constant-product  two SAC tokens, real reserves, 100 bps
     //   stable            THREE tokens — the no-hardcoded-pair rule, exercised
     //                     rather than asserted (3 of 304 token sets are these)
@@ -166,11 +184,21 @@ async function main() {
     //                     ranges rather than the tradable balance
     //   wasm-token        holds a non-SAC token, the only branch that produces a
     //                     route-(a) `notApplicable` issuer disclosure
+    'aquarius-xlm-usdc': {
+      type: 'AquariusRawData',
+      module: 'aquarius',
+      dir: 'aquarius',
+      scorable: true,
+      // The pool object comes from the registry rather than being repeated here:
+      // a fixture captured from a hand-typed address could freeze a pool the
+      // indexer does not run, and the snapshot test would then pin nothing.
+      make: () => new mod.AquariusAdapter({ ...opts, pool: mod.AQUARIUS_XLM_USDC }),
+    },
     'aquarius-constant-product': {
       type: 'AquariusRawData',
       module: 'aquarius',
       dir: 'aquarius',
-      scorable: false,
+      scorable: true,
       make: () =>
         new mod.AquariusAdapter({
           ...opts,
@@ -185,7 +213,7 @@ async function main() {
       type: 'AquariusRawData',
       module: 'aquarius',
       dir: 'aquarius',
-      scorable: false,
+      scorable: true,
       make: () =>
         new mod.AquariusAdapter({
           ...opts,
@@ -200,7 +228,7 @@ async function main() {
       type: 'AquariusRawData',
       module: 'aquarius',
       dir: 'aquarius',
-      scorable: false,
+      scorable: true,
       make: () =>
         new mod.AquariusAdapter({
           ...opts,
@@ -215,7 +243,7 @@ async function main() {
       type: 'AquariusRawData',
       module: 'aquarius',
       dir: 'aquarius',
-      scorable: false,
+      scorable: true,
       make: () =>
         new mod.AquariusAdapter({
           ...opts,
@@ -227,12 +255,6 @@ async function main() {
         }),
     },
   };
-  const AQUARIUS = [
-    'aquarius-constant-product',
-    'aquarius-stable',
-    'aquarius-concentrated',
-    'aquarius-wasm-token',
-  ];
   const names =
     which === 'all'
       ? ['blend', 'kinetic', 'yieldblox', 'etherfuse', ...AQUARIUS]

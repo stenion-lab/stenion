@@ -31,16 +31,19 @@ import type { CoverageEntry } from './coverage.ts';
 /**
  * A category no entry actually carries.
  *
- * `ProtocolCategory` has two members now — `dex` was registered with its
- * rulebook (#100) — but **nothing is scored under `dex` yet**, so the board
- * still receives one category's worth of entries and the cross-category rules
- * still have nothing real to test against. A rule that gets its first test on
- * the day a second category reaches the board is a rule that was never
- * enforced, which is what this constant is for.
+ * `dex` IS ON THE BOARD SINCE #104, and this constant stayed anyway.
  *
- * Deliberately still a cast to a non-member rather than the real `'dex'`: using
- * `'dex'` would make these tests pass for a category whose entries do not exist,
- * and quietly stop testing the "unknown second category" case the day one does.
+ * It was written when `dex` was a registered rulebook with nothing scored under
+ * it, so that the cross-category rules would be enforced before the day a second
+ * category first reached the board rather than on it. That day has arrived: one
+ * Aquarius market is registered and `LIVE_MIXED_BOARD` below exercises the same
+ * rules with the real `'dex'` value.
+ *
+ * Keeping this one is the point rather than an oversight. It is a category the
+ * code has never heard of, so it tests that the grouping, the per-block
+ * numbering and the A-Z merge rule are structural — properties of
+ * `buildRegistryView`, not of a list of known category names. A suite that only
+ * ever saw `'lending'` and `'dex'` could pass with either one special-cased.
  * The cast is confined to this constant, and nothing built from it reaches a
  * score, a route, or the database.
  */
@@ -108,6 +111,23 @@ const MIXED_BOARD = [
   scored('swapper', 'Swapper', 88, FUTURE_CATEGORY),
   scored('poolside', 'Poolside', 12, FUTURE_CATEGORY),
   scored('driftless', 'Driftless', null, FUTURE_CATEGORY),
+];
+
+/**
+ * The board as it actually is since #104: four lending markets and one `dex`
+ * one, with the real category values and roughly the real scores.
+ *
+ * SEPARATE FROM `MIXED_BOARD` rather than replacing it — see FUTURE_CATEGORY for
+ * why the unknown-category case is still worth having. This one answers a
+ * different question: does the shipped board, with the shipped categories,
+ * render two blocks numbered independently?
+ */
+const LIVE_MIXED_BOARD = [
+  scored('blend', 'Blend', 50),
+  scored('kinetic', 'Kinetic', 27),
+  scored('yieldblox', 'YieldBlox', 27),
+  scored('etherfuse', 'Etherfuse', 51),
+  scored('aquarius-xlm-usdc', 'Aquarius XLM/USDC', 24, 'dex'),
 ];
 
 const COVER = [
@@ -657,6 +677,65 @@ describe('buildRegistryView — one category renders exactly what it did before 
         ['scored', 'yieldblox'],
       ],
     );
+  });
+});
+
+describe('buildRegistryView — the live two-category board (#104)', () => {
+  it('renders two ranked blocks, each numbered from 01 within itself', () => {
+    const view = buildRegistryView(LIVE_MIXED_BOARD, COVER, params());
+
+    assert.deepEqual(
+      view.rankedGroups.map((g) => g.category),
+      ['dex', 'lending'],
+      'one block per shipped category, alphabetically — not a ranking of categories',
+    );
+    assert.deepEqual(
+      view.rankedGroups.map((g) => g.entries.map((e) => e.id)),
+      [['aquarius-xlm-usdc'], ['etherfuse', 'blend', 'kinetic', 'yieldblox']],
+    );
+    // The claim the block structure exists to protect: the single dex entry is
+    // 01 OF DEX. It has the lowest score on the board, and a flat ranking would
+    // have numbered it 05 — which would read as "worst of five", a comparison
+    // no rulebook supports.
+    const dex = view.rankedGroups.find((g) => g.category === 'dex');
+    assert.equal(dex?.entries[0]?.id, 'aquarius-xlm-usdc');
+    assert.equal(dex?.entries.length, 1, 'one dex market is registered today');
+    assert.equal(view.counts.ranked, 5, 'the count is rows, across blocks — never a rank');
+  });
+
+  it('keeps the # column to score-descending, with a real dex row present', () => {
+    assert.equal(buildRegistryView(LIVE_MIXED_BOARD, COVER, params()).showRank, true);
+    for (const sort of REGISTRY_SORTS.filter((s) => s !== 'score-desc')) {
+      assert.equal(
+        buildRegistryView(LIVE_MIXED_BOARD, COVER, params({ sort })).showRank,
+        false,
+        `sort=${sort} must not render a position numeral`,
+      );
+    }
+  });
+
+  it('lets A–Z merge lending and dex, and nothing else does', () => {
+    for (const sort of REGISTRY_SORTS) {
+      const view = buildRegistryView(LIVE_MIXED_BOARD, COVER, params({ sort }));
+      if (sort === 'name') {
+        assert.equal(view.mode, 'alphabetical');
+        assert.equal(
+          view.merged[0]?.entry.id,
+          'aquarius-xlm-usdc',
+          'the dex market sorts first by name, above every lending one, and that asserts nothing',
+        );
+        assert.equal(view.showRank, false);
+      } else {
+        assert.equal(
+          view.merged.length,
+          0,
+          `sort=${sort} produced a merged, category-spanning list`,
+        );
+        for (const group of view.rankedGroups) {
+          assert.equal(new Set(group.entries.map((e) => e.category)).size, 1);
+        }
+      }
+    }
   });
 });
 

@@ -403,6 +403,87 @@ describe('Store SQL (integration)', { skip }, () => {
     assert.equal(detail!.safetyScore, 53, 'the failed run must not clear the score');
   });
 
+  it('round-trips a dex run — a factor map that is not lending’s five', async () => {
+    // #104's proof, and it is a proof about the READ path, not about JSON.
+    // `recordRun` writes `JSON.stringify(record.factors)` into a `$4::jsonb`
+    // column and nothing on the way in inspects a key, so storage was never the
+    // question. What was wrong was the declared type: `RunRecord.factors`,
+    // `HistoryEntry.factors` and `ProtocolDetail.factors` were all
+    // `RiskFactorMap` — LENDING's five keys — and `toHistoryEntry` cast
+    // `row.factors as RiskFactorMap`, which would have typed a two-key dex row
+    // as five and handed `undefined` to anything reading `.oracleSafety` off it,
+    // with no error anywhere.
+    //
+    // So this writes a real `dex` map through `insertRunRecord`, reads it back
+    // through `getProtocolDetail`, and asserts the map comes out with EXACTLY
+    // its own two keys, on both the top-level `factors` and the history row —
+    // the two places that cast used to lie about.
+    const p = id('dex-roundtrip');
+    const factors = {
+      adminKeySafety: {
+        value: 10,
+        weight: 0.55,
+        detail: 'worst of 7 roles',
+        components: [
+          { id: 'rolePosture', label: 'Role posture', value: 10, detail: 'two keys at 200 ops' },
+        ],
+      },
+      assetControlSafety: {
+        value: 40,
+        weight: 0.45,
+        detail: 'worst of 2 gradable reserves',
+      },
+    };
+    await store.upsertProtocol({
+      id: p,
+      name: 'Aquarius XLM/USDC',
+      chain: 'stellar',
+      category: 'dex',
+      adapterRef: 'AquariusAdapter',
+      contractId: 'CA6PUJLBYKZKUEKLZJMKBZLEKP2OTHANDEOWSFF44FTSYLKQPIICCJBE',
+    });
+    await store.insertRunRecord({
+      protocolId: p,
+      status: 'ok',
+      safetyScore: 24,
+      factors,
+      category: 'dex',
+      methodologyVersion: 1,
+      operationalState: {
+        level: OperationalLevel.Active,
+        source: 'router.get_emergency_mode() = false',
+        blocked: [],
+        origin: 'protocol',
+        detail: 'no kill switch is set and neither emergency mode is on',
+        asOf: '2026-08-29T19:32:15.000Z',
+      },
+      computedAt: '2026-08-29T19:32:15.000Z',
+      runAt: '2026-08-29T19:32:15.000Z',
+    });
+
+    const detail = await store.getProtocolDetail(p);
+    assert.equal(detail!.category, 'dex', 'the category the run was stamped with');
+    assert.equal(detail!.methodologyVersion, 1, 'dex methodology version 1, its own counter');
+    assert.deepEqual(
+      Object.keys(detail!.factors ?? {}).sort(),
+      ['adminKeySafety', 'assetControlSafety'],
+      'two keys out, and none of lending’s four invented on the way',
+    );
+    assert.deepEqual(detail!.factors, factors, 'the whole map, components included');
+
+    const [run] = detail!.history;
+    assert.equal(run!.status, 'ok');
+    assert.deepEqual(
+      run!.status === 'ok' ? run.factors : null,
+      factors,
+      'the history row carries the same two-key map — this is the read path whose cast used to claim five',
+    );
+    // The one that would have been silently wrong before: reading a lending key
+    // off a dex row. It is absent, which is the truth; the old type said it was
+    // a `RiskFactor | null`.
+    assert.ok(!('oracleSafety' in (detail!.factors ?? {})));
+  });
+
   it('upsertProtocol is idempotent and refreshes metadata', async () => {
     const p = id('upsert');
     await store.upsertProtocol({

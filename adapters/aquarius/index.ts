@@ -3,17 +3,17 @@
 // `./types.ts`, `./fetch.ts` and `./score.ts` export more than this re-exports,
 // and that extra is internal wiring rather than API.
 //
-// THE FIRST NON-LENDING ADAPTER. It implements `Adapter<AquariusRawData, 'dex',
-// DexFactorMap>` — three parameters where both lending adapters take two,
-// because `dex` is scored on `adminKeySafety` and `assetControlSafety` and the
-// interface's default factor map is lending's five-key `RiskFactorMap`. The
-// third parameter is defaulted, so nothing about Blend or Kinetic changed; see
-// `Adapter` in `core/src/adapter.ts` for why it had to exist.
+// THE FIRST NON-LENDING ADAPTER. It implements `Adapter<AquariusRawData, 'dex'>`
+// — the same two parameters both lending adapters take, because since #104 the
+// factor map is DERIVED from the category rather than named here. Declaring
+// `'dex'` is what makes `computeRiskFactors` owe exactly `adminKeySafety` and
+// `assetControlSafety`; there is no third parameter to get wrong, which is the
+// whole point of the revision (see `Adapter` in `core/src/adapter.ts`).
 //
-// IT IS STILL NOT REGISTERED. No `AQUARIUS_POOLS` constant exists and nothing is
-// added to any target list here — which pools to register is a reviewed decision
-// that depends on a size census (#104). This class scores whichever pool it is
-// handed.
+// REGISTERED SINCE #104, through `AQUARIUS_POOLS` in ./types.ts — one entry, the
+// XLM/USDC constant-product pool. The indexer iterates that list exactly as it
+// iterates `BLEND_POOLS`; this class still scores whichever pool it is handed,
+// and the list is the only place a market is named.
 
 import { scoreFactors } from '@stenion/core';
 import type {
@@ -31,8 +31,10 @@ import type { AquariusAdapterOptions, AquariusRawData } from './types.ts';
 
 export {
   AQUARIUS_POOL_TYPES,
+  AQUARIUS_POOLS,
   AQUARIUS_ROLES,
   AQUARIUS_ROUTER_ID,
+  AQUARIUS_XLM_USDC,
   DEFAULT_HORIZON_URL,
   DEFAULT_RPC_URL,
 } from './types.ts';
@@ -63,7 +65,7 @@ export {
 } from './fetch.ts';
 export { aquariusOperationalState, computeAquariusRiskFactors } from './score.ts';
 
-export class AquariusAdapter implements Adapter<AquariusRawData, 'dex', DexFactorMap> {
+export class AquariusAdapter implements Adapter<AquariusRawData, 'dex'> {
   /**
    * Built in the constructor rather than as a field initialiser because every
    * identity field has to describe the pool THIS INSTANCE reads. `contractId`
@@ -116,10 +118,11 @@ export class AquariusAdapter implements Adapter<AquariusRawData, 'dex', DexFacto
    * `DEX_FACTORS`. Delegates to ./score.ts, which reads no clock and no instance
    * state, so a fixture exercises every rule.
    *
-   * Returns `DexFactorMap`, not lending's `RiskFactorMap`: `dex` scores
-   * `adminKeySafety` and `assetControlSafety` and has no referent for the other
-   * three lending factors at all (no borrow ledger, no cap, no oracle). See
-   * `CATEGORY_FACTORS.dex`.
+   * Returns `DexFactorMap` — which is `FactorMapFor<'dex'>`, the key set
+   * `CATEGORY_FACTORS.dex` declares, and therefore exactly what the interface
+   * demands of an adapter that declared `category: 'dex'`. Not lending's
+   * `RiskFactorMap`: `dex` has no referent for the other three lending factors
+   * at all (no borrow ledger, no cap, no oracle).
    */
   async computeRiskFactors(raw: AquariusRawData): Promise<DexFactorMap> {
     return computeAquariusRiskFactors(raw);

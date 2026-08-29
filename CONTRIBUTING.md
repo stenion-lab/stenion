@@ -35,7 +35,7 @@ An adapter that breaks any of these will not be merged, regardless of how good t
 
 ## The `Adapter` interface
 
-Every adapter implements `Adapter<TRawData, TCategory, TFactors>` from `@stenion/core`
+Every adapter implements `Adapter<TRawData, TCategory>` from `@stenion/core`
 ([`core/src/adapter.ts`](core/src/adapter.ts)). `TRawData` is your protocol's own raw shape — it has
 nothing in common with another protocol's, so it stays internal to your adapter.
 
@@ -43,16 +43,16 @@ nothing in common with another protocol's, so it stays internal to your adapter.
 export interface Adapter<
   TRawData = unknown,
   TCategory extends ProtocolCategory = ProtocolCategory,
-  TFactors extends FactorMap = RiskFactorMap,
 > {
   // identity: { id: slug, name, chain, category, adapterRef, logo?, contractId?, links? }
   readonly metadata: ProtocolMetadata<TCategory>;
 
   fetchRawData(): Promise<TRawData>; // pull raw on-chain state (RPC + Horizon)
 
-  computeRiskFactors(rawData: TRawData): Promise<TFactors>; // → your category's *Safety factors
+  // → exactly the *Safety factors YOUR category's rulebook declares
+  computeRiskFactors(rawData: TRawData): Promise<FactorMapFor<TCategory>>;
 
-  score(factors: TFactors): ScoreResult<TFactors>; // → weighted safetyScore
+  score(factors: FactorMapFor<TCategory>): ScoreResult<FactorMapFor<TCategory>>; // → safetyScore
 
   operationalState(rawData: TRawData): OperationalState<TCategory>; // → what the market refuses
 }
@@ -61,21 +61,27 @@ export interface Adapter<
 Separate methods (not one `run()`) so the indexer can inspect intermediate output and so
 `score()` can be unit-tested against fixed factor inputs without touching RPC.
 
-**Both trailing parameters are defaulted, so a lending adapter names only the first two.**
-`BlendAdapter implements Adapter<BlendRawData, 'lending'>` and picks up lending's five-key
-`RiskFactorMap` for free. An adapter in any other category names all three —
-`AquariusAdapter implements Adapter<AquariusRawData, 'dex', DexFactorMap>` — because `RiskFactorMap`
-_is_ lending's map (`Record<RiskFactorType, …>`, its five keys fixed) and `dex` scores two different
-ones. Your category's map is a one-line derivation beside its weight table in
-[`core/src/weights.ts`](core/src/weights.ts), never a hand-written key list:
+**Name your category and the factor map follows — you do not get to choose it.**
+`BlendAdapter implements Adapter<BlendRawData, 'lending'>` owes lending's five;
+`AquariusAdapter implements Adapter<AquariusRawData, 'dex'>` owes `dex`'s two. `FactorMapFor<C>`
+reads the key set straight out of `CATEGORY_FACTORS` in
+[`core/src/weights.ts`](core/src/weights.ts), so **which factors your category scores is declared in
+exactly one place and your adapter cannot disagree with it.** Returning another category's map, or a
+key no rulebook has, is a compile error rather than a review note — `core/src/weights.test.ts` pins
+that with `@ts-expect-error` probes.
+
+`TCategory` is defaulted to the whole union so the indexer can hold a heterogeneous
+`Adapter<unknown>[]`; your adapter should always name it.
+
+A convenience alias for your category's map lives beside its weight table, for your own code to
+refer to. It is a name, not a second definition:
 
 ```ts
-export type DexFactorMap = Record<keyof typeof DEX_FACTORS, RiskFactor | null>;
+export type DexFactorMap = FactorMapFor<'dex'>;
 ```
 
-Deriving it is the point — a factor added to or removed from `CATEGORY_FACTORS` then breaks every
-adapter in that category at compile time, instead of letting one publish a map its rulebook does not
-describe.
+Adding or removing a factor in `CATEGORY_FACTORS` therefore breaks every adapter in that category at
+compile time, instead of letting one publish a map its rulebook does not describe.
 
 ### `operationalState` — required, and it must not touch a factor
 

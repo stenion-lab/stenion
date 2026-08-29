@@ -9,9 +9,10 @@ descending, with never-scored protocols last.
 > is not a quantity. This response is a flat data feed sorted by a single column; it is not a
 > leaderboard across categories, and building one from it by reading positions off the array would
 > assert a comparison the number cannot support. Rank within one `category` and present the
-> categories separately. Today every entry is `"lending"`, so the flat order happens to be a valid
-> ranking — that is a fact about the current data, not a guarantee of this endpoint, and it stops
-> being true the first time a second category ships.
+> categories separately. **That stopped being hypothetical on 2026-08-29**: `"dex"` entries are now
+> published alongside `"lending"` ones, so the flat order of this array is no longer a valid ranking
+> and never will be again. Sorting by `safetyScore` across the whole array would put a `dex` market
+> above or below a `lending` one on a comparison neither rulebook supports.
 
 **Request**
 
@@ -110,19 +111,19 @@ curl https://stenion.vercel.app/api/v1/protocols
 }
 ```
 
-| Field              | Type                     | Notes                                                                                                                                                                                                                              |
-| ------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`               | string                   | Stable identifier, **case-sensitive**, used as the path segment on the detail endpoint.                                                                                                                                            |
-| `name`             | string                   | Display name.                                                                                                                                                                                                                      |
-| `chain`            | string                   | Currently always `"stellar"`.                                                                                                                                                                                                      |
-| `category`         | string                   | Which rulebook produced `safetyScore` — currently always `"lending"`. **Scores are comparable only within one category.** Tolerate an unrecognised value: new categories are additive and stay on `v1`.                            |
-| `logo`             | string or null           | Root-relative path to a mark **Stenion hosts** — prefix with the base host. `null` is a normal state, not a broken image.                                                                                                          |
-| `deployedOn`       | object or null           | **Present when this entry is not an independent protocol** — see [Not every entry is a protocol](coverage.md#not-every-entry-is-a-protocol). `null` means it runs on its own contracts.                                            |
-| `safetyScore`      | number or null           | 0–100, higher = safer. From the latest **`ok`** run. `null` means never successfully scored — not "zero", not "unsafe".                                                                                                            |
-| `computedAt`       | string or null           | ISO 8601 UTC. When that score was computed. `null` if and only if `safetyScore` is `null`.                                                                                                                                         |
-| `operationalState` | object or null           | **What the market's own contracts are currently refusing** — see [Operational state](protocol-by-id.md#operational-state-is-published-never-scored). Never folded into `safetyScore`. `null` means not read, never "unrestricted". |
-| `lastRunAt`        | string or null           | ISO 8601 UTC. The most recent run of **any** status. See [Staleness](health.md#staleness-is-your-problem-too).                                                                                                                     |
-| `lastRunStatus`    | `"ok"`, `"failed"`, null | Status of that most recent run. `null` means the protocol has never been run at all.                                                                                                                                               |
+| Field              | Type                     | Notes                                                                                                                                                                                                                                     |
+| ------------------ | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | string                   | Stable identifier, **case-sensitive**, used as the path segment on the detail endpoint.                                                                                                                                                   |
+| `name`             | string                   | Display name.                                                                                                                                                                                                                             |
+| `chain`            | string                   | Currently always `"stellar"`.                                                                                                                                                                                                             |
+| `category`         | string                   | Which rulebook produced `safetyScore` — `"lending"` or `"dex"` today. **Scores are comparable only within one category, and so are the keys of `factors`.** Tolerate an unrecognised value: new categories are additive and stay on `v1`. |
+| `logo`             | string or null           | Root-relative path to a mark **Stenion hosts** — prefix with the base host. `null` is a normal state, not a broken image.                                                                                                                 |
+| `deployedOn`       | object or null           | **Present when this entry is not an independent protocol** — see [Not every entry is a protocol](coverage.md#not-every-entry-is-a-protocol). `null` means it runs on its own contracts.                                                   |
+| `safetyScore`      | number or null           | 0–100, higher = safer. From the latest **`ok`** run. `null` means never successfully scored — not "zero", not "unsafe".                                                                                                                   |
+| `computedAt`       | string or null           | ISO 8601 UTC. When that score was computed. `null` if and only if `safetyScore` is `null`.                                                                                                                                                |
+| `operationalState` | object or null           | **What the market's own contracts are currently refusing** — see [Operational state](protocol-by-id.md#operational-state-is-published-never-scored). Never folded into `safetyScore`. `null` means not read, never "unrestricted".        |
+| `lastRunAt`        | string or null           | ISO 8601 UTC. The most recent run of **any** status. See [Staleness](health.md#staleness-is-your-problem-too).                                                                                                                            |
+| `lastRunStatus`    | `"ok"`, `"failed"`, null | Status of that most recent run. `null` means the protocol has never been run at all.                                                                                                                                                      |
 
 The board deliberately carries no `contractId`, `site`, or `docs` — those are verification detail
 nobody acts on from a list, and repeating them on every row of every fetch is waste. They live on
