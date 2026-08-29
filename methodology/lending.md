@@ -1,13 +1,14 @@
 ## Lending
 
-Everything from here to
-[Operational state](publishing-rules.md#operational-state-is-published-never-scored) is **lending's rulebook and
-lending's alone** — its version changelog, its factor weights, its worked example, and the five
-factors themselves. It is the only category Stenion publishes a rulebook for today
-(`PROTOCOL_CATEGORIES` in [`core/src/category.ts`](../core/src/category.ts)), and this section is
-the shape a second one would take: its own heading, its own changelog, its own weight table, its
-own factor list. Nothing above this line is lending-specific; nothing below it may be assumed to
-hold for a category that isn't lending.
+Everything from here to the [Dex](dex.md#dex) heading is **lending's rulebook and lending's alone**
+— its version changelog, its factor weights, its worked example, and the five factors themselves.
+It is one of two categories Stenion publishes a rulebook for (`PROTOCOL_CATEGORIES` in
+[`core/src/category.ts`](../core/src/category.ts)), and it is the only one anything is scored under
+today. This section was written as the shape a second one would take — its own heading, its own
+changelog, its own weight table, its own factor list — and [Dex](dex.md#dex) is that second one,
+taking exactly that shape. Nothing above this line is lending-specific; **nothing below it may be
+assumed to hold for a category that isn't lending**, and in particular a `dex` score is not
+comparable with a `lending` one.
 
 **Which protocols are scored under it:** every market on the registry today — the three Blend
 pools ([`adapters/blend/`](../adapters/blend)) and Kinetic/K2

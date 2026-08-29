@@ -19,10 +19,12 @@
  * a `Record<ProtocolCategory, …>` that has gained a key is a compile error at
  * every place a new category must be registered.
  *
- * ONE ENTRY TODAY. Nothing here adds a category or a factor. What is scoped is
- * *where lending's five weights are declared*, not what any of them is — every
- * value below is the value METHODOLOGY.md has always published, and no score
- * moved when they were gathered here.
+ * TWO ENTRIES, AND ONLY ONE OF THEM IS WEIGHTED. `lending` is published in full;
+ * `dex` (#100) declares its three factors and their labels with **no weights at
+ * all**, because weights are a type-(b) judgment call under TAXONOMY.md Gate 1
+ * and belong to their own review (#102) rather than being guessed alongside the
+ * factor set. That is not a gap left implicit — see `CategoryFactors`, which
+ * makes "weights pending" a distinct type rather than a missing field.
  *
  * WHY A LEAF WITH ONE TYPE-ONLY IMPORT. `weights.test.ts` and
  * `scoring.test.ts` both VALUE-import this module under `node --test`, whose
@@ -57,12 +59,60 @@ export interface FactorDeclaration {
   readonly label: string;
 }
 
-/** A category's published factor set, keyed by factor key. */
-export interface CategoryFactors {
-  /** display name of the category — also its METHODOLOGY.md section heading */
+/**
+ * A factor that has been admitted to a category's taxonomy but not yet weighted.
+ *
+ * It has NO `weight` property — not an optional one, not a zero, not a
+ * placeholder. That is the entire point: `weight?: number` would make
+ * `LENDING_FACTORS.oracleSafety.weight` read `number | undefined` at every
+ * adapter call site to buy a state only one category is in, and an adapter that
+ * read `undefined` into a `RiskFactor.weight` would produce `NaN * value` inside
+ * `scoreFactors` and publish a score of 0 with no error anywhere. Omitting the
+ * property makes that read a compile error instead.
+ */
+export interface UnweightedFactorDeclaration {
+  /** canonical human name, e.g. "Executable depth" */
   readonly label: string;
-  readonly factors: Readonly<Record<string, FactorDeclaration>>;
 }
+
+/**
+ * A category's factor set: which factors its rulebook names, and — when the
+ * weight table has been reviewed — what each is weighted.
+ *
+ * A DISCRIMINATED UNION, BECAUSE "DECLARED" AND "SCORABLE" ARE DIFFERENT STATES.
+ * TAXONOMY.md admits a category in two steps on purpose: the factor set with
+ * every anchor named is reviewable on its own (Gate 0, 2, 3, 8), while the
+ * weights are a type-(b) judgment call that Gate 1 requires be argued and
+ * labelled as one. Guessing weights to fill the shape would smuggle unanchored
+ * numbers past the gate the two-step review exists to satisfy, and a zero or a
+ * `0.33` placeholder would be indistinguishable from a reviewed value the moment
+ * anyone read it.
+ *
+ * So the intermediate state is typed rather than commented. `status` is the
+ * discriminant; narrowing on it is what gives a caller access to `weight` at
+ * all. `scoreFactors` is unaffected — it reads weights off the `RiskFactor`s an
+ * adapter builds, never off this table — and remains unable to compute a `dex`
+ * score for the plain reason that no adapter can construct a weighted `dex`
+ * factor without a weight to put in it.
+ *
+ * `pendingWeights` is a state to LEAVE, not to live in. #102 turns `dex` into a
+ * `published` entry with a weight table, and nothing should be built on the
+ * assumption that a category can stay here.
+ */
+export type CategoryFactors =
+  | {
+      /** display name of the category — also its `methodology/<category>.md` section heading */
+      readonly label: string;
+      /** the weight table is reviewed and published; scores may be computed */
+      readonly status: 'published';
+      readonly factors: Readonly<Record<string, FactorDeclaration>>;
+    }
+  | {
+      readonly label: string;
+      /** the factor set is admitted; its weight table is not yet reviewed */
+      readonly status: 'pendingWeights';
+      readonly factors: Readonly<Record<string, UnweightedFactorDeclaration>>;
+    };
 
 /**
  * Lending's five factors and their weights, in `RiskFactorType` order.
@@ -79,12 +129,46 @@ export interface CategoryFactors {
 export const CATEGORY_FACTORS = {
   lending: {
     label: 'Lending',
+    status: 'published',
     factors: {
       collateralSafety: { weight: 0.2, label: 'Collateral concentration' },
       oracleSafety: { weight: 0.25, label: 'Oracle trustworthiness' },
       adminKeySafety: { weight: 0.2, label: 'Admin key control' },
       liquiditySafety: { weight: 0.15, label: 'Free-liquidity depth' },
       utilizationSafety: { weight: 0.2, label: 'Utilization headroom' },
+    },
+  },
+
+  /**
+   * The DEX rulebook's three factors, admitted by #100 and published in
+   * `methodology/dex.md`. **Weights deliberately absent — see #102.**
+   *
+   * Three, not five. `utilizationSafety`, `liquiditySafety` and `oracleSafety`
+   * have no referent at all in a spot AMM: there is no borrow ledger and no cap,
+   * `(supplied − borrowed) / supplied` is identically 1 for every pool, and
+   * Aquarius reads no oracle — price comes from reserves or from tick state.
+   * Reusing them would publish a number computed from nothing. `dex.md` records
+   * that argument in full, and TAXONOMY.md Gate 0 is what required it.
+   *
+   * `adminKeySafety` IS THE SAME KEY LENDING USES, DELIBERATELY. It is not a
+   * rephrasing of a lending factor — the question "who can change the rules"
+   * really is the same question, and it is computed from entirely different data
+   * on each side (Aquarius's seven named roles plus a two-step upgrade deadline;
+   * a lending pool's single admin's signer set). Two categories using one name
+   * for one question is what stops the taxonomy fragmenting into synonyms, so
+   * the key is shared and the computation is not. Open question B on #100,
+   * resolved this way and recorded in `dex.md` so it is not re-litigated. Note
+   * that a shared KEY is not a comparability claim: the values are not
+   * comparable across categories, for the same reason the overall scores are
+   * not.
+   */
+  dex: {
+    label: 'Dex',
+    status: 'pendingWeights',
+    factors: {
+      depthSafety: { label: 'Executable depth' },
+      adminKeySafety: { label: 'Admin key control' },
+      assetControlSafety: { label: 'Issuer asset control' },
     },
   },
 } as const satisfies Record<ProtocolCategory, CategoryFactors>;
@@ -95,5 +179,12 @@ export const CATEGORY_FACTORS = {
  * A convenience, not a second source: it is the same object
  * `CATEGORY_FACTORS.lending.factors` names. An adapter reads
  * `LENDING_FACTORS.oracleSafety.weight` where it used to write `0.25`.
+ *
+ * THERE IS DELIBERATELY NO `DEX_FACTORS` SIBLING. This alias exists for the
+ * adapters that read it, and `dex` has none — nor can it have one before #102
+ * supplies the weights an adapter would be reading. Adding the alias now would
+ * publish a name whose only use is to be dereferenced for a `weight` that is not
+ * there. It arrives with the weight table, in the same change as the adapter
+ * that needs it.
  */
 export const LENDING_FACTORS = CATEGORY_FACTORS.lending.factors;

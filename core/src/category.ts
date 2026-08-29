@@ -21,18 +21,28 @@
 /**
  * The protocol categories Stenion publishes a rulebook for.
  *
- * ONE MEMBER TODAY, and that is the point: `lending` was always the unstated
- * default, and naming it is what makes a second category expressible rather
- * than assumed. Nothing here adds a category — see issue #76.
+ * TWO MEMBERS: `lending`, the rulebook every scored market runs under today, and
+ * `dex`, admitted by the gate-checked submission in #100 as the first use of the
+ * machinery #76–#79 built. `lending` was always the unstated default, and naming
+ * it is what made a second category expressible rather than assumed.
  *
  * A CLOSED UNION, NOT AN OPEN STRING. Adding a category is never a data-only
- * change: it needs a taxonomy, a weight table, a METHODOLOGY.md section and
- * adapter code (to TAXONOMY.md's bar, once #79 lands). So the compile error from
- * a `Record<ProtocolCategory, …>` that has gained a key is the feature — it is
- * how every place a category must be registered gets found, rather than
- * discovered in production by a lookup that returned undefined.
+ * change: it needs a taxonomy, a weight table, a `methodology/<category>.md`
+ * file and adapter code, to TAXONOMY.md's bar. So the compile error from a
+ * `Record<ProtocolCategory, …>` that has gained a key is the feature — it is how
+ * every place a category must be registered gets found, rather than discovered
+ * in production by a lookup that returned undefined. Adding `dex` here is what
+ * surfaced `METHODOLOGY_VERSIONS`, `CATEGORY_FACTORS` and `CATEGORY_OPERATIONS`
+ * as the three places it had to be declared, which is the design working.
+ *
+ * `dex` IS REGISTERED BUT NOT YET SCORABLE, and the type system says so rather
+ * than a comment: its factor set is declared `status: 'pendingWeights'` in
+ * `weights.ts`, which is a different type from a published one and carries no
+ * `weight` on any factor. No adapter claims the category, nothing is registered
+ * to a target list, and no `dex` row can reach `risk_scores`. See #102 for the
+ * weight table that closes it.
  */
-export const PROTOCOL_CATEGORIES = ['lending'] as const;
+export const PROTOCOL_CATEGORIES = ['lending', 'dex'] as const;
 export type ProtocolCategory = (typeof PROTOCOL_CATEGORIES)[number];
 
 /**
@@ -63,6 +73,20 @@ export type ProtocolCategory = (typeof PROTOCOL_CATEGORIES)[number];
  *     history stamped 2 while a briefly-live v2 was in this constant before the
  *     rulebook was flattened back. See METHODOLOGY.md, "Current version".
  *
+ * `dex: 1` — the three-factor AMM rulebook admitted in #100
+ *     (`methodology/dex.md`). **Its own counter, with no relation to lending's.**
+ *     Both read 1 today and that is a coincidence of both being new, not a
+ *     statement that they are the same rulebook or that a `dex` v1 score is
+ *     comparable to a `lending` v1 score — it is exactly the ambiguity
+ *     `risk_scores.category` is stamped beside this number to remove. It starts
+ *     at 1 rather than continuing lending's count for the same reason: a
+ *     category's first published rulebook is its version 1, always.
+ *
+ *     It is a version for a rulebook nothing has yet been scored under. `dex`'s
+ *     weight table is deliberately absent until #102, so no run can be stamped
+ *     with this number yet; it is declared now because TAXONOMY.md Gate 7
+ *     requires a category to arrive at 1 rather than acquire a version later.
+ *
  * SPLITTING THE SCALAR INTO THIS MAP BUMPED NOTHING. No formula, threshold or
  * weight changed, so lending's stored history stays comparable straight across
  * the change — which is why `lending` is 1 here and not 2. The next change that
@@ -74,4 +98,5 @@ export type ProtocolCategory = (typeof PROTOCOL_CATEGORIES)[number];
  */
 export const METHODOLOGY_VERSIONS = {
   lending: 1,
+  dex: 1,
 } as const satisfies Record<ProtocolCategory, number>;

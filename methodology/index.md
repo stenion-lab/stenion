@@ -11,7 +11,8 @@ the rulebook the adapters must implement.
 thresholds are fixed here and identical across every protocol in a category — and across
 _markets_: the three Blend pools Stenion scores run one adapter and one rulebook, differing only
 in the pool each reads. Each category owns a section below, holding its own factor list, weight
-table, worked example and version changelog; **lending** is the only one today. What legitimately
+table, worked example and version changelog. There are two — **lending**, which every scored market
+runs under, and **dex**, published but not yet scoring anything. What legitimately
 differs per adapter is only _where the raw inputs are read on-chain_ — e.g. Blend reads a per-reserve `max_util` cap,
 while Kinetic (K2), being Aave-V3-style, has no such cap and instead anchors the same
 utilization formula to its own `OPTIMAL_UTILIZATION_RATE` (see §5). The _anchoring pattern_
@@ -29,9 +30,21 @@ Versions are **per category**, on independent counters that each start at 1, so 
 alone does not identify a rulebook — the category and the number together do. One row per
 category, and the changelog behind each lives in that category's own section:
 
-| Category  | Current version | Rulebook and changelog        |
-| --------- | --------------- | ----------------------------- |
-| `lending` | 1               | [Lending](lending.md#lending) |
+| Category  | Current version | Scored today | Rulebook and changelog        |
+| --------- | --------------- | ------------ | ----------------------------- |
+| `lending` | 1               | yes          | [Lending](lending.md#lending) |
+| `dex`     | 1               | **no**       | [Dex](dex.md#dex)             |
+
+**The two `1`s are not the same 1.** Counters are independent and each starts at 1, so `dex` v1 and
+`lending` v1 are two different rulebooks rather than two editions of one, and neither is older than
+the other. The category and the number together identify a rulebook; the number alone does not.
+
+**Dex, methodology v1 — published, not yet in use.** The three-factor AMM rulebook in
+[Dex](dex.md#dex). **Nothing is scored under it and no run has been stamped with it:** its weight
+table is deliberately deferred (a separate review), and its size floor is an open item, both
+recorded in that section rather than filled in with plausible numbers. It is published now because
+[`../TAXONOMY.md`](../TAXONOMY.md) requires a category's rulebook to be reviewable _before_ an
+adapter is written against it.
 
 **Lending, methodology v1** — the rulebook described in the [Lending](lending.md#lending) section, in full,
 including `oracleSafety` scoring both price freshness and manipulation resistance (§2), the
