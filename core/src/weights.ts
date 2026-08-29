@@ -28,13 +28,14 @@
  * typed (see `CategoryFactors`); it is simply unoccupied, which is where it
  * should be.
  *
- * WHY A LEAF WITH ONE TYPE-ONLY IMPORT. `weights.test.ts` and
+ * WHY A LEAF WITH TYPE-ONLY IMPORTS. `weights.test.ts` and
  * `scoring.test.ts` both VALUE-import this module under `node --test`, whose
- * type-stripping loader resolves an import graph literally. The
- * `import type` below is erased before Node sees the file, so at runtime this
- * module imports nothing at all — the same shape `category.ts` and
+ * type-stripping loader resolves an import graph literally. Both `import type`
+ * lines below are erased before Node sees the file, so at runtime this module
+ * imports nothing at all — the same shape `category.ts` and
  * `operational-state.ts` keep, and for the same reason. Don't add a value
- * import here.
+ * import here. (`./types.ts` does not import this module back, so the
+ * `RiskFactor` import `DexFactorMap` needs introduces no cycle.)
  *
  * WHAT THIS IS NOT. It is not the dashboard's label table. `FACTOR_ORDER` in
  * `dashboard/app/lib/contract.ts` holds short *column headers* for a narrow
@@ -45,6 +46,7 @@
  */
 
 import type { ProtocolCategory } from './category';
+import type { RiskFactor } from './types';
 
 /**
  * One factor's entry in a category's rulebook.
@@ -248,3 +250,22 @@ export const LENDING_FACTORS = CATEGORY_FACTORS.lending.factors;
  * quantities, exactly as the two categories' overall scores were.
  */
 export const DEX_FACTORS = CATEGORY_FACTORS.dex.factors;
+
+/**
+ * Dex's factor map — the shape `AquariusAdapter.computeRiskFactors` returns.
+ *
+ * DERIVED FROM `DEX_FACTORS`, never written out. `keyof typeof DEX_FACTORS` is
+ * exactly the key set `CATEGORY_FACTORS.dex.factors` declares, so a factor added
+ * to or removed from the rulebook changes this type in the same commit and every
+ * adapter that builds one stops compiling. Writing the two keys out here would
+ * be a second declaration of which factors `dex` scores — the thing this module
+ * exists to prevent, one level up from the weights.
+ *
+ * The lending equivalent is `RiskFactorMap` in `./types.ts`, which predates this
+ * module and is spelled against the `RiskFactorType` enum instead. That is not
+ * an inconsistency worth unifying: `RiskFactorType` is a published, stored
+ * vocabulary (it names the keys in every `risk_scores.factors` row written so
+ * far) and rewriting it as a derived type would change nothing and risk
+ * something.
+ */
+export type DexFactorMap = Record<keyof typeof DEX_FACTORS, RiskFactor | null>;

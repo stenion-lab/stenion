@@ -1,31 +1,31 @@
 // The AquariusAdapter itself: identity, and the Adapter interface wired to the
-// modules beside it. This file is the adapter's whole public surface —
-// `./types.ts` and `./fetch.ts` export more than this re-exports, and that extra
-// is internal wiring rather than API.
+// three modules beside it. This file is the adapter's whole public surface —
+// `./types.ts`, `./fetch.ts` and `./score.ts` export more than this re-exports,
+// and that extra is internal wiring rather than API.
 //
-// THIS ADAPTER FETCHES AND DOES NOT SCORE, DELIBERATELY (#101). `dex` ships with
-// two factors (`adminKeySafety`, `assetControlSafety`) and NO weight table — the
-// weights are their own review (#102) and the scoring implementation is #103. So
-// `computeRiskFactors`, `score` and `operationalState` throw rather than
-// returning something plausible. An adapter that returned a made-up factor map
-// to satisfy the interface would be indistinguishable from a working one at the
-// call site, which is precisely the failure the two-step admission exists to
-// prevent.
+// THE FIRST NON-LENDING ADAPTER. It implements `Adapter<AquariusRawData, 'dex',
+// DexFactorMap>` — three parameters where both lending adapters take two,
+// because `dex` is scored on `adminKeySafety` and `assetControlSafety` and the
+// interface's default factor map is lending's five-key `RiskFactorMap`. The
+// third parameter is defaulted, so nothing about Blend or Kinetic changed; see
+// `Adapter` in `core/src/adapter.ts` for why it had to exist.
 //
-// There is no `score.ts` in this folder yet, and that is the same fact stated in
-// the file layout. CLAUDE.md's four-file adapter shape is types/fetch/score/
-// index; `score.ts` is where the factors and `operationalState` live, and it
-// arrives with #103 rather than existing now as a file full of throws.
+// IT IS STILL NOT REGISTERED. No `AQUARIUS_POOLS` constant exists and nothing is
+// added to any target list here — which pools to register is a reviewed decision
+// that depends on a size census (#104). This class scores whichever pool it is
+// handed.
 
+import { scoreFactors } from '@stenion/core';
 import type {
   Adapter,
+  DexFactorMap,
   OperationalState,
   ProtocolMetadata,
-  RiskFactorMap,
-  RiskScoreResult,
+  ScoreResult,
 } from '@stenion/core';
 
 import { fetchAquariusRawData } from './fetch.ts';
+import { aquariusOperationalState, computeAquariusRiskFactors } from './score.ts';
 import { DEFAULT_HORIZON_URL, DEFAULT_RPC_URL } from './types.ts';
 import type { AquariusAdapterOptions, AquariusRawData } from './types.ts';
 
@@ -61,25 +61,9 @@ export {
   parseAssetName,
   unrecognisedPoolType,
 } from './fetch.ts';
+export { aquariusOperationalState, computeAquariusRiskFactors } from './score.ts';
 
-/**
- * The message every unimplemented scoring method throws.
- *
- * A STRING LITERAL, never built from a runtime identifier — the workspace is
- * bundled and minified into the dashboard's serverless functions, so a name
- * taken from `this.constructor.name` would be right in every test and wrong in
- * production. Same rule as `ProtocolMetadata.adapterRef`.
- */
-function notScorable(method: string): Error {
-  return new Error(
-    `AquariusAdapter.${method} is not implemented: this adapter's scoring half has not been ` +
-      'written. The dex rulebook is complete — two factors, their formulas and a weight table ' +
-      '(methodology/dex.md) — and what is missing is score.ts, which is issue #103. This ' +
-      'adapter reads the chain and stops there by design; see issue #101.',
-  );
-}
-
-export class AquariusAdapter implements Adapter<AquariusRawData, 'dex'> {
+export class AquariusAdapter implements Adapter<AquariusRawData, 'dex', DexFactorMap> {
   /**
    * Built in the constructor rather than as a field initialiser because every
    * identity field has to describe the pool THIS INSTANCE reads. `contractId`
@@ -128,37 +112,35 @@ export class AquariusAdapter implements Adapter<AquariusRawData, 'dex'> {
   }
 
   /**
-   * Not implemented — see the file header. Throws rather than returning a
-   * partial or placeholder factor map: the two factors' formulas are published
-   * (`methodology/dex.md`) and nothing here computes them yet, so there is no
-   * honest number to put in one.
+   * The two `dex` factors — methodology/dex.md, weighted 0.55 / 0.45 from
+   * `DEX_FACTORS`. Delegates to ./score.ts, which reads no clock and no instance
+   * state, so a fixture exercises every rule.
+   *
+   * Returns `DexFactorMap`, not lending's `RiskFactorMap`: `dex` scores
+   * `adminKeySafety` and `assetControlSafety` and has no referent for the other
+   * three lending factors at all (no borrow ledger, no cap, no oracle). See
+   * `CATEGORY_FACTORS.dex`.
    */
-  async computeRiskFactors(_raw: AquariusRawData): Promise<RiskFactorMap> {
-    throw notScorable('computeRiskFactors');
+  async computeRiskFactors(raw: AquariusRawData): Promise<DexFactorMap> {
+    return computeAquariusRiskFactors(raw);
   }
 
   /**
-   * Not implemented — #103.
+   * The pool's live restrictions — published beside the score and never in it.
    *
-   * The raw shape already carries everything this needs: `killed` (swap,
-   * deposit, claim — read via getters) and `emergencyMode`, on the pool and on
-   * the router. What is missing is the mapping onto `dex`'s vocabulary and the
-   * `swapDisabled` rung, which is scoring-adjacent logic and belongs in
-   * `score.ts` beside the factors rather than being written here first.
+   * The byte-identical-factor-map invariant this rests on (#15) is asserted in
+   * ./score.test.ts: no kill switch and no emergency-mode flag may move any
+   * value `computeRiskFactors` produces.
    */
-  operationalState(_raw: AquariusRawData): OperationalState<'dex'> {
-    throw notScorable('operationalState');
+  operationalState(raw: AquariusRawData): OperationalState<'dex'> {
+    return aquariusOperationalState(raw);
   }
 
-  /**
-   * Not implemented — #103.
-   *
-   * Deliberately NOT `scoreFactors(factors)`. The shared weighted mean would
-   * happily average an empty or hand-built map and return a confident number,
-   * and `dex` has no weights for it to average. Delegating here would make an
-   * unscorable category look scorable at the one call site the indexer uses.
-   */
-  score(_factors: RiskFactorMap): RiskScoreResult {
-    throw notScorable('score');
+  // Delegates to the shared rulebook in @stenion/core. The weighted mean is not
+  // per-protocol and not per-category — `scoreFactors` is generic over the factor
+  // map precisely so there is never a `dex` variant of it — so this method exists
+  // only to satisfy the Adapter interface.
+  score(factors: DexFactorMap): ScoreResult<DexFactorMap> {
+    return scoreFactors(factors);
   }
 }

@@ -30,6 +30,17 @@
 // oracle reports 14 decimals where both others report 7, so every fixed-point
 // divide that reads `oracleDecimals` is only genuinely tested here.
 //
+// EIGHT FIXTURES, THREE ADAPTERS, TWO CATEGORIES since #103. The four Aquarius
+// pools are scored under the `dex` rulebook — two factors, not lending's five —
+// and they are here for the same reason the lending four are: the synthetic
+// suite in `aquarius/score.test.ts` picks convenient issuer flags and identical
+// roles, and real pools do not. They also contribute what no lending fixture can:
+// a three-token pool, a `concentrated` pool whose `get_reserves` is not the
+// tradable balance, and a reserve that is a wasm contract rather than a SAC.
+// Their four expected scores are the same four `methodology/dex.md` publishes in
+// its worked example, derived there from these same files — so a change here
+// that the rulebook does not describe fails in two places.
+//
 // Run with: pnpm --filter @stenion/adapters test
 
 import assert from 'node:assert/strict';
@@ -43,13 +54,23 @@ import {
   BlendAdapter,
 } from './blend/index.ts';
 import { KineticAdapter } from './kinetic/index.ts';
+import { AquariusAdapter } from './aquarius/index.ts';
+import type { AquariusPool } from './aquarius/index.ts';
 import { blendMainnet } from './fixtures/blend-mainnet.ts';
 import { etherfuseMainnet } from './fixtures/etherfuse-mainnet.ts';
 import { kineticMainnet } from './fixtures/kinetic-mainnet.ts';
 import { yieldbloxMainnet } from './fixtures/yieldblox-mainnet.ts';
-import type { RiskFactor, RiskFactorMap } from '@stenion/core';
+import { aquariusConstantProductMainnet } from './fixtures/aquarius/constant-product-mainnet.ts';
+import { aquariusStableMainnet } from './fixtures/aquarius/stable-mainnet.ts';
+import { aquariusConcentratedMainnet } from './fixtures/aquarius/concentrated-mainnet.ts';
+import { aquariusWasmTokenMainnet } from './fixtures/aquarius/wasm-token-mainnet.ts';
+import { DEX_FACTORS } from '@stenion/core';
+import type { FactorMap, RiskFactor } from '@stenion/core';
 
-const values = (f: RiskFactorMap) =>
+// Takes `FactorMap`, not `RiskFactorMap`: since #103 this file reads two
+// categories' maps and lending's five-key type cannot describe the dex one.
+// `RiskFactorMap` is assignable to it, so every lending call site is unchanged.
+const values = (f: FactorMap) =>
   Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v === null ? null : v.value]));
 
 const sub = (f: RiskFactor, id: string) => f.components?.find((c) => c.id === id)?.value;
@@ -532,14 +553,226 @@ describe('all three Blend pools — one engine, three markets', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Aquarius — the dex category
+// ---------------------------------------------------------------------------
+
+/**
+ * The four captured pools, each paired with the identity an adapter instance
+ * would be handed.
+ *
+ * DECLARED HERE RATHER THAN IMPORTED, because there is deliberately no
+ * `AQUARIUS_POOLS` constant: which markets to register is a reviewed decision
+ * that depends on a size census (#104), and shipping a speculative registry
+ * array would invite `buildTargets` to iterate it. Each `poolId` is read off the
+ * fixture itself, so an adapter here can never be pointed at a pool the numbers
+ * did not come from.
+ */
+const AQUARIUS_SNAPSHOTS = [
+  {
+    label: 'constant_product XLM/AQUA',
+    pool: {
+      id: 'aquarius-xlm-aqua',
+      name: 'Aquarius XLM/AQUA',
+      poolId: aquariusConstantProductMainnet.poolId,
+    } satisfies AquariusPool,
+    raw: aquariusConstantProductMainnet,
+    adminKeySafety: 10,
+    assetControlSafety: 70,
+    score: 37,
+  },
+  {
+    label: 'stable USDC/USDx/yUSDC (three tokens)',
+    pool: {
+      id: 'aquarius-usdc-usdx-yusdc',
+      name: 'Aquarius USDC/USDx/yUSDC',
+      poolId: aquariusStableMainnet.poolId,
+    } satisfies AquariusPool,
+    raw: aquariusStableMainnet,
+    adminKeySafety: 10,
+    assetControlSafety: 40,
+    score: 24,
+  },
+  {
+    label: 'concentrated XLM/AQUA',
+    pool: {
+      id: 'aquarius-xlm-aqua-concentrated',
+      name: 'Aquarius XLM/AQUA (concentrated)',
+      poolId: aquariusConcentratedMainnet.poolId,
+    } satisfies AquariusPool,
+    raw: aquariusConcentratedMainnet,
+    adminKeySafety: 10,
+    assetControlSafety: 70,
+    score: 37,
+  },
+  {
+    label: 'stable USDC(SAC)/USDC(wasm)',
+    pool: {
+      id: 'aquarius-usdc-usdc-wasm',
+      name: 'Aquarius USDC/USDC.w',
+      poolId: aquariusWasmTokenMainnet.poolId,
+    } satisfies AquariusPool,
+    raw: aquariusWasmTokenMainnet,
+    adminKeySafety: 10,
+    assetControlSafety: 40,
+    score: 24,
+  },
+] as const;
+
+describe('Aquarius — frozen mainnet snapshots, all four pool shapes', () => {
+  for (const snap of AQUARIUS_SNAPSHOTS) {
+    it(`produces exactly the factor map captured with it — ${snap.label}`, async () => {
+      const factors = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
+      assert.deepEqual(values(factors), {
+        adminKeySafety: snap.adminKeySafety,
+        assetControlSafety: snap.assetControlSafety,
+      });
+    });
+
+    it(`scores ${snap.score} — the weighted mean of those two — ${snap.label}`, async () => {
+      // Cross-checked by hand against methodology/dex.md's worked example, so a
+      // failure separates "a factor moved" from "the weighting moved":
+      //   10x0.55 + 70x0.45 = 37.0 -> 37
+      //   10x0.55 + 40x0.45 = 23.5 -> 24
+      const adapter = new AquariusAdapter({ pool: snap.pool });
+      assert.equal(adapter.score(await adapter.computeRiskFactors(snap.raw)).score, snap.score);
+    });
+  }
+
+  it('reads the same admin posture on all four — the factor that does not discriminate', async () => {
+    // The 2026-08-27 census found one role structure across the router and all
+    // 340 pools, and the 2026-08-29 capture still shows it: a 2-of-3 owner key
+    // with 96 ops (60) and six lone keys, two of them at 200 ops (10). The
+    // minimum is 10 on every pool.
+    //
+    // Pinned rather than left implicit because it is the reason
+    // `assetControlSafety` carries the whole spread today — and because the
+    // weights must NOT be re-tuned to widen that spread, which would be
+    // calibrating a category rulebook against one protocol's current data.
+    for (const snap of AQUARIUS_SNAPSHOTS) {
+      const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
+      assert.equal(f.adminKeySafety!.value, 10, snap.label);
+      assert.equal(sub(f.adminKeySafety!, 'rolePosture'), 10);
+      assert.equal(sub(f.adminKeySafety!, 'upgradeWindow'), 100);
+      assert.match(sub2(f.adminKeySafety!, 'upgradeWindow'), /UpgradeDeadline = 0/);
+    }
+  });
+
+  it('publishes the two route-(a) disclosures on every pool, ungraded', async () => {
+    for (const snap of AQUARIUS_SNAPSHOTS) {
+      const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
+      assert.equal(sub(f.adminKeySafety!, 'timelockDuration'), null);
+      assert.equal(sub(f.adminKeySafety!, 'emergencyBypass'), null);
+    }
+  });
+
+  it('grades native XLM as a SAC with no issuer, not as an unreadable one', async () => {
+    // The counter-example the METADATA read exists for: XLM's `name` is the bare
+    // string `native` rather than `CODE:ISSUER`, so a SAC detected by the shape
+    // of its name would misclassify the most common token in the registry. Here
+    // it scores 100 — "nobody can seize this" — which is the opposite of what a
+    // failed read scores.
+    const snap = AQUARIUS_SNAPSHOTS[0];
+    const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
+    const xlm = f.assetControlSafety!.components!.find((c) => c.label === 'XLM')!;
+    assert.equal(xlm.value, 100);
+    assert.match(xlm.detail, /no issuer account to act from/);
+  });
+
+  it('binds on Circle USDC being auth_revocable in the three-token stable pool', async () => {
+    // Three reserves, scores 40 / 70 / 70, and the minimum is what publishes.
+    // Circle's USDC really does carry `auth_revocable` — read from Horizon at
+    // capture time, not asserted from documentation.
+    const snap = AQUARIUS_SNAPSHOTS[1];
+    const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
+    assert.equal(snap.raw.reserveTokens.length, 3);
+    assert.deepEqual(
+      f.assetControlSafety!.components!.map((c) => c.value),
+      [40, 70, 70],
+    );
+    assert.match(f.assetControlSafety!.detail, /worst of 3 gradable reserve/);
+  });
+
+  it('excludes the wasm reserve as a disclosure — not as a zero and not as a pass', async () => {
+    // The distinction methodology/dex.md calls the most dangerous confusion
+    // available in this factor. The pool scores exactly what its one gradable
+    // reserve scores; the wasm token is named with a null value.
+    const snap = AQUARIUS_SNAPSHOTS[3];
+    const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
+    assert.equal(snap.raw.reserveTokens[1]!.isStellarAsset, false);
+    assert.deepEqual(
+      f.assetControlSafety!.components!.map((c) => c.value),
+      [40, null],
+    );
+    assert.equal(f.assetControlSafety!.value, 40);
+    assert.match(f.assetControlSafety!.detail, /1 of 2 excluded as non-SAC/);
+  });
+
+  it('scores a concentrated pool through the identical path, reading none of its reserves', async () => {
+    // A `concentrated` pool's `get_reserves` is the total across all tick ranges
+    // and NOT the tradable balance. Neither dex factor reads reserves at all, so
+    // the two XLM/AQUA pools — one constant-product, one concentrated — produce
+    // the same numbers from the same code, and that quantity is never misread as
+    // something it is not.
+    const cp = AQUARIUS_SNAPSHOTS[0];
+    const conc = AQUARIUS_SNAPSHOTS[2];
+    assert.equal(conc.raw.poolType, 'concentrated');
+    assert.notDeepEqual(conc.raw.reserves, cp.raw.reserves);
+    assert.deepEqual(
+      values(await new AquariusAdapter({ pool: conc.pool }).computeRiskFactors(conc.raw)),
+      values(await new AquariusAdapter({ pool: cp.pool }).computeRiskFactors(cp.raw)),
+    );
+  });
+
+  it('publishes operationalState active on all four without touching the factor map', async () => {
+    // The #15 rule on the newest category. None of the four captured pools has a
+    // kill switch set, so `active` here is a reading rather than a default; the
+    // synthetic suite is what walks all 32 states.
+    for (const snap of AQUARIUS_SNAPSHOTS) {
+      const state = new AquariusAdapter({ pool: snap.pool }).operationalState(snap.raw);
+      assert.equal(state.level, 'active');
+      assert.deepEqual(state.blocked, []);
+      assert.equal(state.source, 'router.get_emergency_mode() = false');
+    }
+  });
+
+  it('declares the dex category and names the pool it actually read', async () => {
+    for (const snap of AQUARIUS_SNAPSHOTS) {
+      const metadata = new AquariusAdapter({ pool: snap.pool }).metadata;
+      assert.equal(metadata.category, 'dex');
+      assert.equal(metadata.adapterRef, 'AquariusAdapter');
+      assert.equal(metadata.contractId, snap.raw.poolId);
+    }
+    const ids = AQUARIUS_SNAPSHOTS.map((s) => s.pool.id);
+    assert.equal(new Set(ids).size, ids.length, 'pool slugs must be unique');
+  });
+
+  it('takes both weights from DEX_FACTORS rather than a literal', async () => {
+    const snap = AQUARIUS_SNAPSHOTS[0];
+    const f = await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw);
+    assert.equal(f.adminKeySafety!.weight, DEX_FACTORS.adminKeySafety.weight);
+    assert.equal(f.assetControlSafety!.weight, DEX_FACTORS.assetControlSafety.weight);
+  });
+});
+
 describe('every snapshot', () => {
-  it('populate all five factors with real detail strings', async () => {
-    for (const [factors] of [
-      [await new BlendAdapter().computeRiskFactors(blendMainnet)],
-      [await new KineticAdapter().computeRiskFactors(kineticMainnet)],
-      [await new BlendAdapter({ pool: BLEND_YIELDBLOX_V2 }).computeRiskFactors(yieldbloxMainnet)],
-      [await new BlendAdapter({ pool: BLEND_ETHERFUSE_V2 }).computeRiskFactors(etherfuseMainnet)],
-    ]) {
+  it('populates every factor its category declares, with real detail strings', async () => {
+    // Both categories, one loop — the check is category-agnostic: whichever
+    // factors a rulebook declares must all be present, all whole numbers in
+    // range, and all carry a real explanation. Lending contributes five keys per
+    // fixture and dex contributes two; nothing here asserts a count, because the
+    // count is `CATEGORY_FACTORS`' business and not this test's.
+    const maps: FactorMap[] = [
+      await new BlendAdapter().computeRiskFactors(blendMainnet),
+      await new KineticAdapter().computeRiskFactors(kineticMainnet),
+      await new BlendAdapter({ pool: BLEND_YIELDBLOX_V2 }).computeRiskFactors(yieldbloxMainnet),
+      await new BlendAdapter({ pool: BLEND_ETHERFUSE_V2 }).computeRiskFactors(etherfuseMainnet),
+    ];
+    for (const snap of AQUARIUS_SNAPSHOTS) {
+      maps.push(await new AquariusAdapter({ pool: snap.pool }).computeRiskFactors(snap.raw));
+    }
+
+    for (const factors of maps) {
       for (const [key, factor] of Object.entries(factors)) {
         assert.ok(factor, `${key} should be populated on live data`);
         assert.ok(factor.detail.length > 10, `${key} needs a real detail string`);
