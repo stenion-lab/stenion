@@ -5,7 +5,7 @@ package; the adapters import `@stenion/core`'s `Adapter` interface as a real typ
 
 ```
 /core        — @stenion/core        Adapter interface + RiskFactorType taxonomy + shared types
-/adapters    — @stenion/adapters    one folder per protocol (blend/, kinetic/), each an Adapter
+/adapters    — @stenion/adapters    one folder per protocol (blend/, kinetic/, aquarius/), each an Adapter
 /db          — @stenion/db          Postgres layer: pg pool, typed Store, raw-SQL migrations
 /indexer     — @stenion/indexer     scheduler that runs adapters on an interval, writes to Postgres
 /api         — @stenion/api         standalone REST server (legacy — see "Why @stenion/api exists")
@@ -72,13 +72,22 @@ read `LENDING_FACTORS`, `core/src/scoring.test.ts` pins that declaration against
 published weight table, and both adapter suites pin themselves against the declaration — so the
 chain runs adapter → core → the public rulebook with no hand-written copy in it.
 
-**`@stenion/adapters`** — one folder per protocol (`blend/`, `kinetic/`), each holding an
-`index.ts` that exports the `Adapter` class and is the folder's whole public surface, plus the
+**`@stenion/adapters`** — one folder per protocol (`blend/`, `kinetic/`, `aquarius/`), each holding
+an `index.ts` that exports the `Adapter` class and is the folder's whole public surface, plus the
 `fetch.ts` / `score.ts` / `types.ts` it is assembled from. An adapter
-reads a protocol's on-chain state (Soroban RPC + Horizon), reduces it into the five `*Safety`
-factors using the formulas in `methodology/lending.md`, and produces a weighted `safetyScore`.
-Currently
-`BlendAdapter` and `KineticAdapter`. Adapters throw on failure; they never swallow errors.
+reads a protocol's on-chain state (Soroban RPC + Horizon), reduces it into its category's `*Safety`
+factors using the formulas in that category's `methodology/` file, and produces a weighted
+`safetyScore`. Adapters throw on failure; they never swallow errors.
+
+**`AquariusAdapter` is the exception that proves the shape, and it is deliberate.** It is the first
+`dex` adapter and it **fetches without scoring**: `computeRiskFactors`, `score` and
+`operationalState` throw, because the `dex` rulebook publishes no weight table yet
+(`methodology/dex.md`, "Factor weights"). It has no `score.ts` — that file arrives with the scoring
+implementation rather than existing now as a file full of throws — and **no pool is registered to
+any target list**, so nothing in the indexer can reach it. It is exported so the fixture-capture
+script can. Returning a plausible factor map to satisfy the interface would have made an unscorable
+category indistinguishable from a working one at the indexer's call site, which is the failure the
+two-step category admission exists to prevent.
 
 **One adapter can serve several markets.** `BlendAdapter` takes a `BlendPool` — slug, display name,
 pool contract, mark, links, deployment label — and the module exports `BLEND_POOLS`, the list the

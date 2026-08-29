@@ -154,11 +154,75 @@ The worked examples:
 **Environment variables** (all on the one Vercel project, Production + Preview): `DATABASE_URL`
 (Neon pooled), `STENION_RPC_URL`, `STENION_HORIZON_URL`, `CRON_SECRET`, and optionally
 `STENION_ALERT_WEBHOOK_URL` (failure/recovery alerts; unset = alerting off) and
-`STENION_CYCLE_CONCURRENCY` (targets in flight at once; default 2). The retry and
+`STENION_CYCLE_CONCURRENCY` (targets in flight at once; **default 1** — it shipped at 2 and was
+reverted the same day when the free shared public RPC started returning `429`). The retry and
 threshold knobs — `STENION_RETRY_ATTEMPTS`, `STENION_RETRY_BASE_DELAY_MS`,
 `STENION_ATTEMPT_TIMEOUT_MS`, `STENION_CYCLE_BUDGET_MS`, `STENION_ALERT_THRESHOLD` — all have
 defaults and only need setting to override them; every one is documented in `.env.example`.
 Locally, every package reads these from a single repo-root `.env` via a walk-up loader.
+
+### RPC cost per target, measured
+
+**Why this section exists.** `STENION_CYCLE_CONCURRENCY` is at 1 because an estimate computed from
+developer-machine timings got the request _rate_ wrong and drew `429`s from the free shared public
+RPC on the day it shipped at 2. So a new adapter's cost is counted in **requests**, which is
+machine-independent, before anything is said about seconds.
+
+Counted by instrumenting `globalThis.fetch` around one `fetchRawData()` per adapter, 2026-08-29:
+
+| Target                        | Soroban RPC                             | Horizon | Total requests |
+| ----------------------------- | --------------------------------------- | ------- | -------------- |
+| Blend Fixed V2                | 14                                      | 2       | **16**         |
+| Kinetic (K2)                  | 27                                      | 0       | **27**         |
+| Aquarius, 2-token pool        | 22 (18 simulate + 4 `getLedgerEntries`) | 15      | **37**         |
+| Aquarius, 3-token stable pool | 23 (18 simulate + 5 `getLedgerEntries`) | 17      | **40**         |
+
+**An Aquarius pool costs roughly 2.3x a Blend pool in requests, and the shape is not what was
+predicted.** Issue #101 estimated "~25 simulate calls and ~9 Horizon requests", where the simulate
+count was dominated by `estimate_swap` probes. The simulate count landed at 18 with **no depth
+simulation at all** — `depthSafety` was deferred by question A in `methodology/dex.md`, so
+`estimate_swap` is never called — and the cost moved to **Horizon instead**, which the estimate had
+low by a factor of ~1.7.
+
+**The `getLedgerEntries` count is low because one read answers a lot.** A contract's _instance_
+entry carries 31 (router) to 40 (concentrated pool) storage entries in a single ledger read — admin
+roles, fee, reserves, `UpgradeDeadline`, `FutureWASM` — so the adapter reads it once per contract
+and takes everything from it rather than fetching keys individually. An earlier version additionally
+probed eight speculative ledger keys per contract for the upgrade fields; those were removed once
+the fields were found where they had been all along, which is worth **2 RPC calls per pool**.
+
+**The Horizon cost is where it is because of the seven roles, and it is two requests each, not
+one.** `adminKeySafety` reads every privileged account's thresholds/signers _and_ its recent
+operations — `/accounts/{G…}` plus `/accounts/{G…}/operations` — so seven roles is 14 requests
+before a single token is looked at. The adapter already caches accounts by address for the duration
+of one fetch, which is what stops the router's roles and the pool's roles being read twice; without
+it the figure would be 28.
+
+> **The registry is already at the feasibility ceiling, and one Aquarius pool breaks it.**
+> `cycleFeasibility()` checks `ceil(targets / concurrency) * ATTEMPT_TIMEOUT_MS <= CYCLE_BUDGET_MS`.
+> At today's defaults (`ATTEMPT_TIMEOUT_MS` 10,000, `CYCLE_BUDGET_MS` 42,000, concurrency **1**) the
+> four current targets need `4 x 10,000 = 40,000ms` against a 42,000ms budget — **2 seconds of
+> headroom**. A fifth target needs 50,000ms and the cycle is infeasible:
+>
+> | Targets         | Concurrency | Waves | Required | Verdict          |
+> | --------------- | ----------- | ----- | -------- | ---------------- |
+> | 4 (today)       | 1           | 4     | 40,000ms | feasible, barely |
+> | 5 (+1 Aquarius) | 1           | 5     | 50,000ms | **infeasible**   |
+> | 5 (+1 Aquarius) | 2           | 3     | 30,000ms | feasible         |
+> | 8 (+4 Aquarius) | 1           | 8     | 80,000ms | **infeasible**   |
+> | 8 (+4 Aquarius) | 2           | 4     | 40,000ms | feasible         |
+>
+> So registering **any** Aquarius pool requires either raising concurrency — which is the change
+> that drew `429`s and was reverted — or lowering `ATTEMPT_TIMEOUT_MS`, or raising the budget
+> against the 60s `maxDuration` ceiling. **That is a deployment decision, not an adapter one**, and
+> it is why no Aquarius pool is registered. It has to be settled before registration, not
+> discovered by a cycle that fails.
+
+**Wall-clock is recorded but is NOT the claim.** The same run measured 15.4s / 12.5s per Aquarius
+pool against 6.6s for Blend and 9.2s for Kinetic — from a developer machine in Nigeria against the
+public endpoint, which is exactly the measurement CLAUDE.md forbids making an RPC-load claim from.
+The _ratio_ between adapters on one machine in one session is the usable part; the absolute numbers
+are not, and a deployed per-target `durationMs` is still owed before registration.
 
 ### Caching and rate limits
 
