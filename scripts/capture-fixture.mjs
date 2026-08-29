@@ -31,9 +31,9 @@
 // a decode regression that the three tidy Fixed reserves happen to survive shows
 // up in YieldBlox's eight.
 //
-// NOT EVERY ADAPTER SCORES. AquariusAdapter fetches and stops there — the dex
-// rulebook publishes no weight table yet (#101/#102), so its computeRiskFactors
-// and score throw by design. Targets carry `scorable`, and an unscorable one
+// NOT EVERY ADAPTER SCORES. AquariusAdapter fetches and stops there — its
+// score.ts has not been written (#103), so its computeRiskFactors and score
+// throw by design. Targets carry `scorable`, and an unscorable one
 // captures the raw shape and skips the factor summary rather than being excluded
 // from fixtures entirely: the raw shape is exactly what needs freezing while the
 // decode work is fresh, and it is what #103 will score against.
@@ -283,8 +283,8 @@ async function main() {
 // Captured: ${new Date().toISOString()}
 // ${
       factors === null
-        ? 'Not scored at capture time: this category publishes no weight table yet, so ' +
-          'the adapter scoring methods throw by design. This fixture freezes the RAW SHAPE.'
+        ? 'Not scored at capture time: this adapter has no scoring implementation yet, so ' +
+          'its scoring methods throw by design. This fixture freezes the RAW SHAPE.'
         : `At capture time this scored: safetyScore ${score} (${Object.entries(factors)
             .map(([k, f]) => `${k} ${f === null ? 'null' : f.value}`)
             .join(', ')})`

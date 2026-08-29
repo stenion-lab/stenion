@@ -14,12 +14,15 @@
 // weight of 0, or a weight outside (0, 1]. Those are checked below.
 //
 // THE WEIGHT ASSERTIONS ARE SCOPED TO PUBLISHED CATEGORIES, and that is a real
-// distinction rather than an exemption. `dex` (#100) is admitted as a factor set
-// with its weight table deliberately deferred to #102, so it declares
-// `status: 'pendingWeights'` and carries no weights to sum. A test that skipped
-// it silently would be a hole; the tests below instead assert the OPPOSITE
-// property for it — that no factor in such a category carries a weight at all —
-// so neither state can be reached by accident.
+// distinction rather than an exemption. A category admitted as a factor set
+// whose weight table has not been reviewed declares `status: 'pendingWeights'`
+// and carries no weights to sum; a test that skipped it silently would be a
+// hole, so the tests below assert the OPPOSITE property for such a category —
+// that no factor in it carries a weight at all — and neither state can be
+// reached by accident. **Both categories are `published` today**: `dex` was
+// admitted in #100 and weighted in #102, so the pendingWeights assertions
+// currently iterate an empty set. They are kept for the next category admitted
+// the same way, which is the only reason the state exists.
 //
 // WHAT IS NOT TESTED HERE: whether lending's weights match METHODOLOGY.md. That
 // pinning lives in `scoring.test.ts`, which parses the published table out of
@@ -35,7 +38,7 @@ import { describe, it } from 'node:test';
 // as a type only, so at runtime it is a leaf — if that import ever becomes a
 // value import, this file is where it shows up.
 import { PROTOCOL_CATEGORIES } from './category.ts';
-import { CATEGORY_FACTORS, LENDING_FACTORS } from './weights.ts';
+import { CATEGORY_FACTORS, DEX_FACTORS, LENDING_FACTORS } from './weights.ts';
 
 const categories = () => Object.entries(CATEGORY_FACTORS);
 
@@ -101,12 +104,14 @@ describe('the per-category factor declarations', () => {
   });
 
   it('carries no weight at all on a pendingWeights category', () => {
-    // THE ASSERTION THE STATE EXISTS FOR. `dex` was admitted as a factor SET
-    // (#100); its weights are a separate review (#102) precisely because
-    // TAXONOMY.md Gate 1 makes them a labelled judgment call rather than an
-    // anchored reading. A `0`, a `0.33` placeholder, or a half-filled table
-    // would be indistinguishable from a reviewed value the moment anyone read
-    // it — so the property must be ABSENT, not falsy.
+    // THE ASSERTION THE STATE EXISTS FOR, and it iterates nothing today: `dex`
+    // was admitted as a factor SET (#100) and weighted in its own review (#102),
+    // so no category is pendingWeights any more. It is kept rather than deleted
+    // because the state is how TAXONOMY.md admits a category — factor set first,
+    // weight table second — and the next one will pass through it. A `0`, a
+    // `0.33` placeholder, or a half-filled table would be indistinguishable from
+    // a reviewed value the moment anyone read it, so the property must be
+    // ABSENT, not falsy.
     //
     // The compiler already forbids reading `.weight` off an unweighted
     // declaration. This is the runtime half: a stray value assigned through an
@@ -134,13 +139,14 @@ describe('the per-category factor declarations', () => {
     }
   });
 
-  it('keeps lending published, and dex pending until #102', () => {
+  it('keeps both categories published', () => {
     // Pins the two current answers so that flipping either is a deliberate,
-    // reviewed act rather than a one-word edit. Turning `dex` to 'published'
-    // must land with its weight table in methodology/dex.md, which
-    // scoring.test.ts then parses and pins against this map.
+    // reviewed act rather than a one-word edit. `dex` flipped in #102, and it
+    // could only flip together with its weight table in methodology/dex.md —
+    // scoring.test.ts parses that table and pins it against this map, in both
+    // directions, so a status change with no published table fails there.
     assert.equal(CATEGORY_FACTORS.lending.status, 'published');
-    assert.equal(CATEGORY_FACTORS.dex.status, 'pendingWeights');
+    assert.equal(CATEGORY_FACTORS.dex.status, 'published');
   });
 
   it("declares dex's two factors, sharing adminKeySafety's key with lending", () => {
@@ -183,10 +189,12 @@ describe('the per-category factor declarations', () => {
     }
   });
 
-  it('exposes lending as the same object, not a copy', () => {
-    // `LENDING_FACTORS` is a convenience alias for the adapters to read. If it
-    // ever becomes a separate literal it becomes a second source of the weights,
-    // which is the whole thing this module was added to stop.
+  it('exposes each category as the same object, not a copy', () => {
+    // `LENDING_FACTORS` and `DEX_FACTORS` are convenience aliases for the
+    // adapters to read. If either ever becomes a separate literal it becomes a
+    // second source of that category's weights, which is the whole thing this
+    // module was added to stop.
     assert.equal(LENDING_FACTORS, CATEGORY_FACTORS.lending.factors);
+    assert.equal(DEX_FACTORS, CATEGORY_FACTORS.dex.factors);
   });
 });

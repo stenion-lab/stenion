@@ -433,12 +433,20 @@ Roughly in priority order, but not committed to dates:
     lending-specific by design — utilization against a borrow cap and liquidity headroom for
     withdrawals don't mean anything for an AMM. Scoring other categories means designing a taxonomy
     that fits how each one actually fails, not stretching the lending model over them:
-    - **DEXs / AMMs** (Soroswap, Phoenix, Aquarius) — **rulebook submitted and admitted (#100);
-      see [`methodology/dex.md`](methodology/dex.md).** The `dex` category is registered, versioned at 1
-      on its own counter, and published in full — **two** factors: `adminKeySafety` (seven named
-      roles plus the two-step upgrade deadline, sharing lending's factor key deliberately) and
-      `assetControlSafety` (whether a SAC issuer can freeze or claw back what the pool holds).
-      **Nothing is scored under it yet**: its weight table is a separate review (#102).
+    - **DEXs / AMMs** (Soroswap, Phoenix, Aquarius) — **rulebook complete (#100 admitted the factor
+      set, #102 reviewed the weight table); see [`methodology/dex.md`](methodology/dex.md).** The
+      `dex` category is registered, versioned at 1 on its own counter, and published in full —
+      **two** factors: `adminKeySafety` at **0.55** (seven named roles plus the two-step upgrade
+      deadline, sharing lending's factor key deliberately) and `assetControlSafety` at **0.45**
+      (whether a SAC issuer can freeze or claw back what the pool holds), each with its formula, its
+      thresholds and a worked example computed from a captured mainnet fixture. **No size floor
+      exists and none is pending** — neither factor is size-sensitive, so there is nothing for one
+      to protect.
+
+      **Nothing is scored under it yet, and what is missing is code rather than rules.** The
+      Aquarius adapter's read half landed in #101 and fetches without scoring; its `score.ts` is
+      #103, and registering a pool is #104 — which is itself blocked on a deployment decision, since
+      one more target makes the indexer cycle infeasible at `STENION_CYCLE_CONCURRENCY=1`.
 
       **A third factor, `depthSafety`, was proposed and deferred** — the pool's own `estimate_swap`
       simulation, which is the strongest read available and still cannot ship. Aquarius publishes no

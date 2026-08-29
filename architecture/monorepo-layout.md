@@ -81,10 +81,11 @@ factors using the formulas in that category's `methodology/` file, and produces 
 
 **`AquariusAdapter` is the exception that proves the shape, and it is deliberate.** It is the first
 `dex` adapter and it **fetches without scoring**: `computeRiskFactors`, `score` and
-`operationalState` throw, because the `dex` rulebook publishes no weight table yet
-(`methodology/dex.md`, "Factor weights"). It has no `score.ts` — that file arrives with the scoring
-implementation rather than existing now as a file full of throws — and **no pool is registered to
-any target list**, so nothing in the indexer can reach it. It is exported so the fixture-capture
+`operationalState` throw. The `dex` rulebook they would implement is complete — two factors, their
+formulas and a weight table (`methodology/dex.md`) — and what is missing is the code: it has no
+`score.ts`, because that file arrives with the scoring implementation rather than existing now as a
+file full of throws. **No pool is registered to any target list**, so nothing in the indexer can
+reach it. It is exported so the fixture-capture
 script can. Returning a plausible factor map to satisfy the interface would have made an unscorable
 category indistinguishable from a working one at the indexer's call site, which is the failure the
 two-step category admission exists to prevent.

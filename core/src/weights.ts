@@ -19,12 +19,14 @@
  * a `Record<ProtocolCategory, …>` that has gained a key is a compile error at
  * every place a new category must be registered.
  *
- * TWO ENTRIES, AND ONLY ONE OF THEM IS WEIGHTED. `lending` is published in full;
- * `dex` (#100) declares its two factors and their labels with **no weights at
- * all**, because weights are a type-(b) judgment call under TAXONOMY.md Gate 1
- * and belong to their own review (#102) rather than being guessed alongside the
- * factor set. That is not a gap left implicit — see `CategoryFactors`, which
- * makes "weights pending" a distinct type rather than a missing field.
+ * TWO ENTRIES, BOTH PUBLISHED. `lending` has been weighted since the module
+ * existed; `dex` was admitted in #100 as a factor set with **no weights at all**
+ * and was weighted in #102, its own review — because a weight is a type-(b)
+ * judgment call under TAXONOMY.md Gate 1 and guessing one alongside the factor
+ * set would have buried the guess inside a different argument. The intermediate
+ * state that made that two-step admission expressible is still here and still
+ * typed (see `CategoryFactors`); it is simply unoccupied, which is where it
+ * should be.
  *
  * WHY A LEAF WITH ONE TYPE-ONLY IMPORT. `weights.test.ts` and
  * `scoring.test.ts` both VALUE-import this module under `node --test`, whose
@@ -95,9 +97,13 @@ export interface UnweightedFactorDeclaration {
  * score for the plain reason that no adapter can construct a weighted `dex`
  * factor without a weight to put in it.
  *
- * `pendingWeights` is a state to LEAVE, not to live in. #102 turns `dex` into a
- * `published` entry with a weight table, and nothing should be built on the
- * assumption that a category can stay here.
+ * `pendingWeights` is a state to LEAVE, not to live in. #102 did exactly that
+ * for `dex`, and **no category is in it today**. It is kept because the next
+ * category will be admitted the same way — factor set first, weight table
+ * second — and because the alternative to a typed intermediate state is an
+ * untyped one: a placeholder weight, indistinguishable from a reviewed value the
+ * moment anyone reads it. Nothing should be built on the assumption that a
+ * category can stay here.
  */
 export type CategoryFactors =
   | {
@@ -140,8 +146,34 @@ export const CATEGORY_FACTORS = {
   },
 
   /**
-   * The DEX rulebook's two factors, admitted by #100 and published in
-   * `methodology/dex.md`. **Weights deliberately absent — see #102.**
+   * The DEX rulebook's two factors, admitted by #100 and weighted by #102. Both
+   * halves are published in `methodology/dex.md`.
+   *
+   * **THE TWO WEIGHTS ARE AN UNVALIDATED JUDGMENT CALL** — TAXONOMY.md Gate 1
+   * type (b), labelled here and in `methodology/dex.md`'s "Factor weights"
+   * section, which carries the same argument at length. In short:
+   * `adminKeySafety` carries more because its subject is the pool's own code and
+   * role set, so a compromise there reaches every token the pool holds and the
+   * withdraw path an LP would leave through; `assetControlSafety` reaches only
+   * the balances of one issuer's own asset and cannot touch the pool's code. It
+   * is close behind rather than a minor term because it is the one failure
+   * Aquarius cannot mitigate and the LP gets no warning for — a clawback is one
+   * issuer transaction with no window, while a code change is announced by
+   * `UpgradeDeadline` before it lands.
+   *
+   * **Direction of error:** the two arguments nearly cancel, which is why the
+   * gap is 0.10 rather than lending's spread — the ordering is the claim. If it
+   * is wrong it is wrong by under-weighting issuer control, and a reader who
+   * thinks unmitigable-and-unannounced should dominate would push to 0.45/0.55.
+   * Nothing anchors against them.
+   *
+   * **They were NOT chosen to spread the scores out, and must not be.** All 340
+   * pools shared one admin posture on 2026-08-29, so `adminKeySafety`
+   * discriminates between Aquarius markets not at all today and
+   * `assetControlSafety` carries the whole variance. Down-weighting the constant
+   * factor to widen the registry's range would be calibrating a category
+   * rulebook against one protocol's current data, which is the failure
+   * `methodology/dex.md` refuses everywhere else.
    *
    * TWO, NOT FIVE. `utilizationSafety`, `liquiditySafety` and `oracleSafety`
    * have no referent at all in a spot AMM: there is no borrow ledger and no cap,
@@ -178,10 +210,10 @@ export const CATEGORY_FACTORS = {
    */
   dex: {
     label: 'Dex',
-    status: 'pendingWeights',
+    status: 'published',
     factors: {
-      adminKeySafety: { label: 'Admin key control' },
-      assetControlSafety: { label: 'Issuer asset control' },
+      adminKeySafety: { weight: 0.55, label: 'Admin key control' },
+      assetControlSafety: { weight: 0.45, label: 'Issuer asset control' },
     },
   },
 } as const satisfies Record<ProtocolCategory, CategoryFactors>;
@@ -193,11 +225,26 @@ export const CATEGORY_FACTORS = {
  * `CATEGORY_FACTORS.lending.factors` names. An adapter reads
  * `LENDING_FACTORS.oracleSafety.weight` where it used to write `0.25`.
  *
- * THERE IS DELIBERATELY NO `DEX_FACTORS` SIBLING. This alias exists for the
- * adapters that read it, and `dex` has none — nor can it have one before #102
- * supplies the weights an adapter would be reading. Adding the alias now would
- * publish a name whose only use is to be dereferenced for a `weight` that is not
- * there. It arrives with the weight table, in the same change as the adapter
- * that needs it.
+ * Its `dex` sibling is below, and arrived with `dex`'s weight table rather than
+ * before it: an alias whose only use is to be dereferenced for a `weight` that
+ * is not there publishes a name that cannot be used.
  */
 export const LENDING_FACTORS = CATEGORY_FACTORS.lending.factors;
+
+/**
+ * Dex's declarations, unwrapped — what the Aquarius adapter reads (#103).
+ *
+ * The same convenience `LENDING_FACTORS` is, and the same non-claim: it is the
+ * object `CATEGORY_FACTORS.dex.factors` names, not a copy of it, so there is one
+ * weight table and not two. `weights.test.ts` asserts the identity for both, for
+ * the reason the alias exists at all — a second literal here would be a second
+ * source of the numbers `methodology/dex.md` publishes, which is precisely what
+ * this module was added to stop.
+ *
+ * TWO KEYS, AND `adminKeySafety` IS ALSO ONE OF LENDING'S. That is #100's open
+ * question B, resolved as one name for one question computed from different data
+ * on each side. It is not a comparability claim: a `dex` `adminKeySafety` of 60
+ * and a `lending` one of 60 were produced by different rules from different
+ * quantities, exactly as the two categories' overall scores were.
+ */
+export const DEX_FACTORS = CATEGORY_FACTORS.dex.factors;
