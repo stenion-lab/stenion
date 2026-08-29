@@ -174,6 +174,28 @@ export type RiskFactorKey =
 
 export type RiskFactorMap = Record<RiskFactorKey, RiskFactor | null>;
 
+/**
+ * Any category's factor map — factor keys to factors, `null` for one that
+ * genuinely doesn't apply.
+ *
+ * WHAT THE API ACTUALLY RETURNS, which `RiskFactorMap` above stopped being when
+ * a second category shipped (#104). `RiskFactorKey` is LENDING's five, and a
+ * `dex` protocol's `factors` has two keys, neither of them four of those five.
+ * Typing the response against the narrower map would have told this app that
+ * every entry carries `oracleSafety` — a claim the API does not make and a `dex`
+ * row disproves.
+ *
+ * `RiskFactorMap` is assignable to this, so nothing that already had lending's
+ * map lost precision; `FACTOR_ORDER` and `factorRows` below are what turn either
+ * one into rows to render, keys-first rather than order-first, which is why the
+ * renderer needed no change to draw a two-factor entry.
+ *
+ * Mirrors `FactorMap` in `@stenion/core` — deliberately redeclared rather than
+ * imported, like everything else in this file. See the header note on why this
+ * mirror exists.
+ */
+export type FactorMap = Record<string, RiskFactor | null>;
+
 export type HistoryEntry =
   | {
       status: 'ok';
@@ -184,9 +206,10 @@ export type HistoryEntry =
        * The breakdown that run computed, same shape as the detail's top-level
        * `factors`. Read it under this row's own `methodologyVersion`: a
        * breakdown from an older rulebook is no more comparable with a newer one
-       * than the score is.
+       * than the score is — and under this protocol's own CATEGORY, which is
+       * what decides the key set. See FactorMap.
        */
-      factors: RiskFactorMap;
+      factors: FactorMap;
       computedAt: string;
       runAt: string;
     }
@@ -218,7 +241,8 @@ export interface ProtocolDetail {
   deployedOn: ProtocolDeployment | null;
   safetyScore: number | null;
   computedAt: string | null;
-  factors: RiskFactorMap | null;
+  /** the factors THIS protocol's category scores — see FactorMap */
+  factors: FactorMap | null;
   /** see OperationalState — null means "not read", never "unrestricted" */
   operationalState: OperationalState | null;
   /** rulebook version behind the current score (null if never scored) */

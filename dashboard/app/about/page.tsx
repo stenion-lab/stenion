@@ -60,11 +60,13 @@ export default function AboutPage() {
 
       <Section title="How the score is built">
         <p>
-          Every protocol is graded on the same five factors, each on a 0–100 scale where higher is
-          safer. The overall safety score is a fixed weighted mean of those factors. Wherever
-          possible a factor is anchored to the protocol&apos;s <em>own</em> on-chain parameters —
-          Stenion grades a pool against the line it set for itself, not against an arbitrary
-          constant.
+          Every protocol is graded on the factors its <em>category</em> is scored on — five for a
+          lending market, two for an AMM — each on a 0–100 scale where higher is safer. The overall
+          safety score is a fixed weighted mean of those factors, so two scores mean the same thing
+          only when the categories match, which is why the registry ranks each category separately.
+          Wherever possible a factor is anchored to the protocol&apos;s <em>own</em> on-chain
+          parameters — Stenion grades a pool against the line it set for itself, not against an
+          arbitrary constant.
         </p>
         <p className="mt-4">
           Adapters read data directly from Soroban RPC and Horizon — official, trustless Stellar

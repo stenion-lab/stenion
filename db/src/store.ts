@@ -4,11 +4,11 @@
 // indexer (writing) and the API (reading, step 6) agree on one definition.
 
 import type {
+  FactorMap,
   OperationalState,
   ProtocolCategory,
   ProtocolDeployment,
   ProtocolMetadata,
-  RiskFactorMap,
 } from '@stenion/core';
 import type { Pool } from 'pg';
 
@@ -22,7 +22,31 @@ export type RunRecord =
       protocolId: string;
       status: 'ok';
       safetyScore: number;
-      factors: RiskFactorMap;
+      /**
+       * The factor breakdown behind `safetyScore`, keyed by whichever factors
+       * `category` below scores.
+       *
+       * `FactorMap`, NOT `RiskFactorMap`, AND THE DIFFERENCE IS THE POINT (#104).
+       * `RiskFactorMap` is *lending's* map — `Record<RiskFactorType, …>`, its five
+       * keys required — and this column has never held anything else because
+       * lending was the only category with an adapter. `dex` scores two keys and
+       * neither of them is four of lending's five, so a `dex` run could not be
+       * written through a `RiskFactorMap`-typed field at all: that was the
+       * deliberate compile error #103 left standing here rather than casting past.
+       *
+       * The runtime never needed the change. `recordRun` writes
+       * `JSON.stringify(record.factors)` into a `$4::jsonb` column and nothing in
+       * the write or read path inspects a key, so a two-key map already stored and
+       * returned byte-for-byte. What was wrong was the *declared* type, which
+       * claimed a key set the column does not enforce and the rulebook does not
+       * promise.
+       *
+       * WHICH KEYS ARE VALID IS STILL FIXED — by `CATEGORY_FACTORS` in
+       * `@stenion/core`, per category, not by this type. Widening here is not a
+       * licence to invent factor keys per adapter; it is this layer declining to
+       * repeat a declaration it is not the source of.
+       */
+      factors: FactorMap;
       /**
        * The rulebook this score was computed under, stamped with the version
        * below and frozen with it. Together they are the identifier of a
@@ -156,8 +180,11 @@ export type HistoryEntry =
        * The breakdown behind `safetyScore`, as that run computed it. Non-null on
        * an `ok` row by the `risk_scores_shape` CHECK — a scored run without a
        * factor map cannot be written.
+       *
+       * `FactorMap`: the keys are the ones the rulebook named by this row's own
+       * `methodologyVersion` **and category** scored. See `RunRecord.factors`.
        */
-      factors: RiskFactorMap;
+      factors: FactorMap;
       computedAt: string;
       runAt: string;
     }
@@ -200,7 +227,7 @@ export interface ProtocolDetail {
   deployedOn: ProtocolDeployment | null;
   safetyScore: number | null;
   computedAt: string | null;
-  factors: RiskFactorMap | null;
+  factors: FactorMap | null;
   /**
    * The market's live operational state as of its latest **ok** run — which user
    * operations its own contracts were refusing, and nothing about how bad that
@@ -349,7 +376,7 @@ export interface HistoryRow {
   status: 'ok' | 'failed';
   safety_score: string | null;
   error: string | null;
-  factors: RiskFactorMap | null;
+  factors: FactorMap | null;
   computed_at: Date | null;
   run_at: Date;
   methodology_version: number | null;
@@ -373,7 +400,15 @@ export function toHistoryEntry(row: HistoryRow): HistoryEntry {
         methodologyVersion: row.methodology_version as number,
         // jsonb comes back parsed, so this passes straight through like the
         // detail's top-level factors; non-null on ok rows by risk_scores_shape.
-        factors: row.factors as RiskFactorMap,
+        //
+        // THE CAST ASSERTS NON-NULL AND NOTHING ELSE (#104). It used to read
+        // `as RiskFactorMap`, which additionally claimed the row held lending's
+        // five keys — true of every row written before `dex` existed and a lie
+        // about a `dex` row, whose map has two. A consumer reading
+        // `.oracleSafety` off one would have got `undefined` with no error
+        // anywhere. `FactorMap` is what the column actually guarantees: a map of
+        // factor keys, whose key set belongs to the row's own category.
+        factors: row.factors as FactorMap,
         computedAt: toIso(row.computed_at) as string,
         runAt: row.run_at.toISOString(),
       }
@@ -400,7 +435,7 @@ export interface ProtocolDetailRow {
   deployment_label: string | null;
   safety_score: string | null;
   computed_at: Date | null;
-  factors: RiskFactorMap | null;
+  factors: FactorMap | null;
   operational_state: OperationalState | null;
   methodology_version: number | null;
   last_run_at: Date | null;

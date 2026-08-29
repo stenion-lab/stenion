@@ -185,12 +185,13 @@ export default async function HomePage() {
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h2 className="font-display text-2xl font-semibold text-ink">
-                  Five factors, one transparent formula
+                  A published formula per category
                 </h2>
                 <p className="mt-2 max-w-xl text-sm text-muted">
-                  Every protocol is graded on the same five dimensions, each 0–100 and
-                  higher-is-safer, anchored to the protocol&apos;s own on-chain parameters wherever
-                  they exist. The exact thresholds are public and challengeable.
+                  Every protocol is graded on its category&apos;s factors — five for lending, two
+                  for AMMs — each 0–100 and higher-is-safer, anchored to the protocol&apos;s own
+                  on-chain parameters wherever they exist. The exact thresholds are public and
+                  challengeable.
                 </p>
               </div>
               <Link

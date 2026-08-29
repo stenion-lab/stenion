@@ -1,9 +1,12 @@
 ## The score
 
-`safetyScore` is **0 to 100, higher is safer**. It is a weighted mean of the five factors, each of
-which is also 0–100 higher-is-safer.
+`safetyScore` is **0 to 100, higher is safer**. It is a weighted mean of that protocol's factors,
+each of which is also 0–100 higher-is-safer. **How many factors, and which, depends on its
+`category`** — five for `lending`, two for `dex` — because each category is scored on the failures
+that category actually has. Two `safetyScore`s mean the same thing only when `category` agrees; see
+[Categories](protocols.md).
 
-**Five factors, and nothing else.** `operationalState` is published alongside the score and is
+**Factors, and nothing else.** `operationalState` is published alongside the score and is
 never an input to it — see
 [Operational state is published, never scored](protocol-by-id.md#operational-state-is-published-never-scored). If you
 sum the `factors` yourself, you get `safetyScore` back; that property is deliberate and is why no

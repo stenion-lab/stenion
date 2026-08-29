@@ -132,7 +132,7 @@ The worked examples:
   in production. Also covers retry inside the loop (a transient failure clearing on a later attempt;
   an exhausted retry still recording `failed` with the adapter's own message), the budget rule
   (`targetDeadline` never dropping a target below one full attempt at any feasible target count, and
-  `cycleFeasibility` holding at four targets and failing at five), the worker pool (peak in-flight
+  `cycleFeasibility` holding at five targets and failing at six on the shipped defaults), the worker pool (peak in-flight
   bounded, results ordered by registration however completion is ordered, a failure isolated to its
   own target while another is mid-flight), and alerting against a **seeded** failure streak —
   including the case that matters
@@ -198,31 +198,70 @@ before a single token is looked at. The adapter already caches accounts by addre
 of one fetch, which is what stops the router's roles and the pool's roles being read twice; without
 it the figure would be 28.
 
-> **The registry is already at the feasibility ceiling, and one Aquarius pool breaks it.**
+> **The registry's ceiling is the deploy, not the census — and it is five targets.**
 > `cycleFeasibility()` checks `ceil(targets / concurrency) * ATTEMPT_TIMEOUT_MS <= CYCLE_BUDGET_MS`.
-> At today's defaults (`ATTEMPT_TIMEOUT_MS` 10,000, `CYCLE_BUDGET_MS` 42,000, concurrency **1**) the
-> four current targets need `4 x 10,000 = 40,000ms` against a 42,000ms budget — **2 seconds of
-> headroom**. A fifth target needs 50,000ms and the cycle is infeasible:
+> At concurrency **1** and `ATTEMPT_TIMEOUT_MS` 10,000, the old 42,000ms budget allowed exactly
+> **four** targets — the four lending markets that were already registered — so registering **any**
+> dex market at all made the cycle infeasible, whichever market it was. That was #101's finding and
+> it was #104's blocker, independent of which pools the census turned up.
 >
-> | Targets         | Concurrency | Waves | Required | Verdict          |
-> | --------------- | ----------- | ----- | -------- | ---------------- |
-> | 4 (today)       | 1           | 4     | 40,000ms | feasible, barely |
-> | 5 (+1 Aquarius) | 1           | 5     | 50,000ms | **infeasible**   |
-> | 5 (+1 Aquarius) | 2           | 3     | 30,000ms | feasible         |
-> | 8 (+4 Aquarius) | 1           | 8     | 80,000ms | **infeasible**   |
-> | 8 (+4 Aquarius) | 2           | 4     | 40,000ms | feasible         |
+> | Targets          | Concurrency | Waves | Required | Against 42,000ms | Against 50,000ms  |
+> | ---------------- | ----------- | ----- | -------- | ---------------- | ----------------- |
+> | 4 (lending only) | 1           | 4     | 40,000ms | feasible         | feasible          |
+> | 5 (+1 Aquarius)  | 1           | 5     | 50,000ms | **infeasible**   | feasible, exactly |
+> | 6 (+2 Aquarius)  | 1           | 6     | 60,000ms | **infeasible**   | **infeasible**    |
 >
-> So registering **any** Aquarius pool requires either raising concurrency — which is the change
-> that drew `429`s and was reverted — or lowering `ATTEMPT_TIMEOUT_MS`, or raising the budget
-> against the 60s `maxDuration` ceiling. **That is a deployment decision, not an adapter one**, and
-> it is why no Aquarius pool is registered. It has to be settled before registration, not
-> discovered by a cycle that fails.
+> **Resolved in #104 by raising `STENION_CYCLE_BUDGET_MS` from 42,000 to 50,000, and by nothing
+> else.** Concurrency stays at 1 and `ATTEMPT_TIMEOUT_MS` stays at 10,000. The three levers were
+> weighed and two were rejected on evidence:
+>
+> - **Concurrency 2** would make five targets fit in three waves, and is the change that drew
+>   sustained `429`s from the free shared public RPC and was reverted the same day. Raising it needs
+>   its own deployed RPC-tolerance measurement, which #104 did not do. (Incidentally reproduced
+>   while running the pool census: four concurrent `simulateTransaction` streams against
+>   `mainnet.sorobanrpc.com` drew `429` on 28 of 340 reads. Not a substitute for a deployed
+>   measurement, but not encouraging either.)
+> - **Lowering `ATTEMPT_TIMEOUT_MS` to 8,400** would have bought the fifth target inside the old
+>   budget with nothing else touched, and was rejected because an Aquarius attempt is the longest in
+>   the registry. Its request count is 22 RPC + 15 Horizon (above, machine-independent) against
+>   Kinetic's 27 RPC, and the deployed function's observed rate is 150–235ms per request, which puts
+>   an Aquarius attempt somewhere in 5.5–8.7s. A cap inside that range would time out a healthy
+>   target on a slow day.
+>
+> **The raise was made against observed deployed durations, which is the only condition CLAUDE.md
+> allows it under.** Three cycles `curl`ed from the deployed cron route on 2026-08-29, production,
+> concurrency 1, four lending targets:
+>
+> | Run | blend   | etherfuse | yieldblox | kinetic | `totalMs` | HTTP wall |
+> | --- | ------- | --------- | --------- | ------- | --------- | --------- |
+> | 1   | 3,049ms | 3,007ms   | 3,676ms   | 4,991ms | 15,482ms  | —         |
+> | 2   | 2,412ms | 3,196ms   | 3,934ms   | 5,325ms | 15,627ms  | 17,312ms  |
+> | 3   | 2,458ms | 3,249ms   | 3,926ms   | 6,363ms | 16,759ms  | 17,738ms  |
+>
+> So a real cycle uses ~16s of the budget, and the function's own overhead beyond the cycle — route
+> entry, pool connect, the `upsertProtocol` loop, the response — is **1.0–1.7s**. A cycle can never
+> run past the budget (`targetDeadline` caps every target at `budgetEndsAt`), so the worst-case
+> function wall at a 50s budget is **~52s against the 60s `maxDuration`**, leaving ~8s of margin.
+> The ceiling is still load-bearing and still respected; what changed is that there are now
+> measurements to size against, which is exactly what the previous comment on this default asked for.
+>
+> **This is the last target the budget can buy.** A sixth needs 60,000ms of attempts, which **is**
+> the `maxDuration` ceiling — so it cannot come from here. It has to come from a lower attempt
+> timeout justified by a deployed Aquarius `durationMs`, or from concurrency with its own measured
+> RPC-tolerance test. Which is why `AQUARIUS_POOLS` holds one entry while 339 further Aquarius pools
+> are scorable, and why those 339 are published on the registry under `coverage.ts`'s
+> `awaiting-capacity` status rather than being quietly omitted.
 
-**Wall-clock is recorded but is NOT the claim.** The same run measured 15.4s / 12.5s per Aquarius
-pool against 6.6s for Blend and 9.2s for Kinetic — from a developer machine in Nigeria against the
-public endpoint, which is exactly the measurement CLAUDE.md forbids making an RPC-load claim from.
-The _ratio_ between adapters on one machine in one session is the usable part; the absolute numbers
-are not, and a deployed per-target `durationMs` is still owed before registration.
+**Wall-clock from a developer machine is recorded but is NOT the claim.** A full local cycle on
+2026-08-29 ran all five targets in 36.7s — `etherfuse` 7,524ms, `aquarius-xlm-usdc` 8,929ms,
+`kinetic` 7,659ms, `yieldblox` 7,042ms, `blend` 5,545ms — from Nigeria against the public endpoint,
+which is exactly the measurement CLAUDE.md forbids making an RPC-load claim from. The _ratio_ is the
+usable part: Aquarius is ~1.6x Blend on the same machine in the same session, and Blend is 5,545ms
+locally against 2,412–3,049ms deployed. **A deployed per-target `durationMs` for `aquarius-xlm-usdc`
+is still owed**, and is the first thing to read off the cron route's response after this ships —
+`curl -X POST … /api/cron/run-indexer` returns it. If it exceeds the 10,000ms attempt timeout, the
+target will retry and eventually record a failed run rather than silently mis-score, and the answer
+is to reduce the adapter's request count, not to raise the budget again.
 
 ### Caching and rate limits
 
@@ -280,7 +319,7 @@ static records and invalidates the old deployment's cache.
 | Constant                   | Value | Why                                                                                                                                                                                                                                                                                                                           |
 | -------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `INDEXER_INTERVAL_SECONDS` | 300   | The cron-job.org cadence; observed median `run_at` spacing is 4m59s.                                                                                                                                                                                                                                                          |
-| `CYCLE_JITTER_SECONDS`     | 45    | `run_at` is stamped when a protocol's _turn_ begins, not when cron fires, so its spacing shifts by however much the protocols ahead of it sped up or slowed down — bounded by `STENION_CYCLE_BUDGET_MS` (default 42s). Concurrency only shrinks this (targets sharing a wave start together), so it stays a safe upper bound. |
+| `CYCLE_JITTER_SECONDS`     | 45    | `run_at` is stamped when a protocol's _turn_ begins, not when cron fires, so its spacing shifts by however much the protocols ahead of it sped up or slowed down — bounded by `STENION_CYCLE_BUDGET_MS` (default 50s). Concurrency only shrinks this (targets sharing a wave start together), so it stays a safe upper bound. |
 | `MAX_TTL_SECONDS`          | 45    | Blast radius, not load. See below.                                                                                                                                                                                                                                                                                            |
 | `MIN_TTL_SECONDS`          | 10    | Floor, so the moment around a landing run isn't an uncached hole every client stampedes through.                                                                                                                                                                                                                              |
 
@@ -430,8 +469,8 @@ cron-job.org misfire would read as an outage.
 The down window exists because "everything is stale at once" is weaker evidence than it sounds.
 Every adapter shares Soroban RPC and Horizon, so a broad upstream outage takes them all out together
 while our own infrastructure is fine — and calling that "the cron is dead" sends an operator to the
-wrong place. With four targets today (one adapter serving three of them), "all of them" is a
-small sample. Doubling the window costs nothing operationally, because `degraded` is already `503`
+wrong place. With five targets today (one adapter serving three of them, and two categories), "all
+of them" is a small sample. Doubling the window costs nothing operationally, because `degraded` is already `503`
 and a monitor has already fired; all it buys is the confidence to name which thing broke. The window
 is measured from the **freshest** success across the registry — the most generous reading available,
 so the endpoint can never report worse than the truth.

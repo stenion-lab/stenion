@@ -5,12 +5,20 @@ its version changelog, its two factors, what it refuses to score, and what it de
 in [`lending.md`](lending.md) may be assumed to hold for this category, and nothing here may be
 assumed to hold for lending.
 
-**Which protocols are scored under it: none, yet.** This section is the rulebook, published and
-reviewable _before_ any market is scored under it — which [`../TAXONOMY.md`](../TAXONOMY.md) says is
-the point of writing it first. It was admitted as a gate-checked submission against Aquarius on
-Stellar mainnet (#100); the adapter's read half landed in #101 and **its scoring half in #103**, so
-every formula below now has code and tests behind it. No market is registered to it (#104), which is
-why nothing is scored: the adapter exists and nothing points it at a pool.
+**Which markets are scored under it: one — Aquarius's XLM/USDC constant-product pool**
+(`CA6PUJLB…`, registry id `aquarius-xlm-usdc`). This section was published and reviewable _before_
+any market was scored under it, which [`../TAXONOMY.md`](../TAXONOMY.md) says is the point of
+writing it first. It was admitted as a gate-checked submission against Aquarius on Stellar mainnet
+(#100), weighted in #102, implemented in #101/#103, and registered in #104.
+
+**One market, and the reason is the indexer rather than the rulebook.** Aquarius runs **340** pools
+across 304 token sets — read from the router's own `get_pools_for_tokens_range` at ledger
+64,182,824 on 2026-08-29 — and every one of them is scorable under the rules below, because neither
+factor here is size-sensitive (see [Size floor: none, and none pending](#size-floor-none-and-none-pending)).
+What limits the registry is that one scoring cycle runs inside a 60-second serverless ceiling and
+fits five markets, of which four were already lending. The other 339 are published as assessed and
+unregistered on the registry, under `coverage.ts`'s `awaiting-capacity` status — never as a score,
+and never as a finding about them.
 
 > **This rulebook is complete: two factors, each with a formula, and a reviewed weight table.** The
 > table was deliberately absent when the category was admitted (#100) and landed in its own review

@@ -29,7 +29,13 @@
 // joins, outside any worker, so it cannot become one message per protocol).
 
 import { METHODOLOGY_VERSIONS } from '@stenion/core';
-import type { Adapter, OperationalState, ProtocolMetadata, RiskFactorMap } from '@stenion/core';
+import type {
+  Adapter,
+  FactorMap,
+  OperationalState,
+  ProtocolCategory,
+  ProtocolMetadata,
+} from '@stenion/core';
 import type { RunRecord, Store } from '@stenion/db';
 
 // Explicit .ts extensions, unlike index.ts's extensionless ones. This module is
@@ -55,7 +61,16 @@ export interface IndexTarget {
   metadata: ProtocolMetadata;
   run(): Promise<{
     safetyScore: number;
-    factors: RiskFactorMap;
+    /**
+     * The factor map the adapter produced, at the category-agnostic `FactorMap`
+     * — the shape the persisted `RunRecord.factors` accepts, and not lending's
+     * five-key `RiskFactorMap` (#104). This wrapper's whole job is to erase an
+     * adapter's specific types so a heterogeneous list shares one run loop, and
+     * the factor map is one more of them: `toTarget` below is generic over it,
+     * so the precision is kept where it means something (inside the adapter) and
+     * dropped exactly where the loop stops caring.
+     */
+    factors: FactorMap;
     /**
      * The market's live restrictions, read from the SAME raw fetch the score was
      * computed from. That sharing is the point: a state read separately could
@@ -68,7 +83,30 @@ export interface IndexTarget {
   }>;
 }
 
-export function toTarget<T>(adapter: Adapter<T>): IndexTarget {
+/**
+ * Bind one adapter to the run pipeline, whatever category it scores.
+ *
+ * GENERIC OVER THE CATEGORY TOO (#104). It used to be `toTarget<T>(adapter:
+ * Adapter<T>)`, and `Adapter<T>` defaults `TCategory` to the whole
+ * `ProtocolCategory` union — which was fine while lending was the only category
+ * with an adapter, and stopped being fine the moment the factor map became a
+ * function of that parameter. Inferring `C` from the argument is what lets each
+ * adapter be checked against ITS OWN category's factor map, rather than against
+ * the union of every category's.
+ *
+ * NOT SPELLED `Adapter<T, ProtocolCategory>`, which is shorter and does compile
+ * today. It compiles only because `computeRiskFactors`/`score` are declared as
+ * METHODS, and TypeScript checks method parameters bivariantly — a deliberate
+ * unsoundness. That spelling would accept a concrete adapter by accident rather
+ * than by rule, and would start rejecting every adapter the day either member is
+ * written as a property with a function type.
+ *
+ * `C` is inferred and then immediately ERASED into `IndexTarget`, whose `run`
+ * returns the category-agnostic `FactorMap`. That is the point: the run loop is
+ * heterogeneous by design and must not acquire a per-category variant, any more
+ * than `scoreFactors` may.
+ */
+export function toTarget<T, C extends ProtocolCategory>(adapter: Adapter<T, C>): IndexTarget {
   return {
     metadata: adapter.metadata,
     run: async () => {
@@ -324,11 +362,12 @@ export interface CycleFeasibility {
  * someone discovers by registering a pool and finding out.
  *
  * `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs` — can every
- * target get one attempt of full length? At the shipped defaults (42s budget,
- * 15s attempt timeout, concurrency 2) that holds up to **four targets** and
- * fails at five, and the answer at five is a higher concurrency, a lower attempt
+ * target get one attempt of full length? At the shipped defaults (50s budget,
+ * 10s attempt timeout, concurrency 1) that holds up to **five targets** and
+ * fails at six, and the answer at six is a higher concurrency, a lower attempt
  * timeout, or sharding — all of which this makes a decision at the moment it
- * stops being true.
+ * stops being true. NOT a bigger budget: six targets need 60s of attempts, which
+ * is Vercel Hobby's `maxDuration` itself.
  *
  * Reported, never thrown. Refusing to run because someone registered a fifth
  * pool would take the whole registry down over a config question, which is

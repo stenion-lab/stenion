@@ -222,6 +222,50 @@ export const PROTOCOL_NOTES: Record<string, ProtocolNote[]> = {
         'the call sites of validate_price_change in contract.rs.',
     },
   ],
+
+  'aquarius-xlm-usdc': [
+    {
+      title:
+        'This entry is one Aquarius market of 340, and the seven roles that control it control all of them',
+      body: [
+        'Aquarius is an AMM with many markets rather than one pool. Reading its router’s own ' +
+          'get_pools_for_tokens_range across all 304 of its token sets on 2026-08-29, at ledger ' +
+          '64,182,824, returns 340 pools: 272 constant-product, 42 stableswap and 26 ' +
+          'concentrated. This entry is one of the 272. It is not Aquarius, and a reader who ' +
+          'takes the number above as a grade on the protocol has read it wrongly — what is ' +
+          'scored is the pool at the contract address on this page.',
+        'Every one of those 340 pools runs one of exactly three contracts. Each pool’s running ' +
+          'wasm hash equals one of ConstantPoolHash, StableSwapPoolHash or ' +
+          'ConcentratedPoolHash as the router itself declares them, with no exceptions found — ' +
+          'this pool runs ae0da5a8…de9852, the constant-product hash. So the code under this ' +
+          'market is the same code under 271 others.',
+        'The admin surface is shared too, and that is the part that carries into the score. ' +
+          'get_privileged_addrs() on this pool returns the same seven roles, held by the same ' +
+          'seven accounts, as the router itself: an Admin held by a 3-of-n account with a high ' +
+          'threshold of 2, and six single-signer accounts holding EmergencyAdmin, ' +
+          'EmergencyPauseAdmin, PauseAdmin, OperationsAdmin, RewardsAdmin and SystemFeeAdmin. ' +
+          'A per-pool set_privileged_addrs exists, so this is a current reading rather than an ' +
+          'invariant — but as it stands, adminKeySafety is measuring something about Aquarius ' +
+          'rather than about this market, and would read the same on any of the 340.',
+        'What that means for the two published factors: adminKeySafety does not distinguish this ' +
+          'market from any other Aquarius market today, and assetControlSafety — which reads ' +
+          'the issuers of the tokens this pool actually holds — is the factor that does. That ' +
+          'is a property of Aquarius’s current setup, not of the rulebook, and the weights were ' +
+          'deliberately not tuned around it.',
+        'What is not being claimed: sharing one codebase and one admin set across 340 markets is ' +
+          'ordinary for an AMM and is not itself a finding. It is recorded because the entry ' +
+          'names one pair, and a reader is entitled to know how much of the number is about ' +
+          'that pair and how much is about the protocol underneath it.',
+      ],
+      verify:
+        'Call get_tokens_sets_count() and get_pools_for_tokens_range(0, 304) on the Aquarius AMM ' +
+        'router CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK via Soroban RPC to ' +
+        'enumerate the pools. Read each pool contract’s instance entry for its executable wasm ' +
+        'hash, and the router’s instance storage for ConstantPoolHash / StableSwapPoolHash / ' +
+        'ConcentratedPoolHash to classify it. Call get_privileged_addrs() on this pool and on ' +
+        'the router and compare the two maps.',
+    },
+  ],
 };
 
 export function notesFor(protocolId: string): ProtocolNote[] {

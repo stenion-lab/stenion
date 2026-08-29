@@ -1,5 +1,6 @@
 import type { OperationalState } from './operational-state';
-import { FactorMap, ProtocolCategory, ProtocolMetadata, RiskFactorMap, ScoreResult } from './types';
+import { ProtocolCategory, ProtocolMetadata, ScoreResult } from './types';
+import type { FactorMapFor } from './weights';
 
 /**
  * Version of the Adapter contract itself (not of any protocol). Bumped only
@@ -20,16 +21,23 @@ import { FactorMap, ProtocolCategory, ProtocolMetadata, RiskFactorMap, ScoreResu
  *     the first adapter of every future category into lending's rulebook. Every
  *     implementor must name its category; nothing infers one.
  *
- * NOT bumped for the `TFactors` parameter added alongside the first `dex`
- * adapter (#103), because no implementor has to react to it: it is defaulted to
- * `RiskFactorMap`, so `Adapter<BlendRawData, 'lending'>` resolves to exactly the
- * interface it resolved to before, and both lending adapters compile unchanged.
- * The bar this constant states is "a way adapters must react to" — a required
- * method, a changed signature, a new error model — and a defaulted type
- * parameter is none of those. See the parameter's own note below for why it had
- * to exist at all.
+ * 4 — the factor map is DERIVED from `TCategory` rather than named by the
+ *     adapter (issue #104). #103 had added a third parameter, `TFactors`,
+ *     defaulted to `RiskFactorMap`, to make the first `dex` adapter compile —
+ *     and recorded itself as unreviewed. This is that review, and it revised
+ *     rather than affirmed: nothing tied `TFactors` to `TCategory`, so
+ *     `Adapter<Raw, 'dex', RiskFactorMap>` compiled (a dex adapter scored on
+ *     lending's five) and so did a map of invented keys. Both were checked, not
+ *     supposed. `computeRiskFactors`/`score` now speak `FactorMapFor<TCategory>`
+ *     — the key set `CATEGORY_FACTORS` declares for that category — so an
+ *     adapter cannot publish factors its own rulebook does not name.
+ *
+ *     BUMPED, where #103's addition deliberately was not, because the bar is
+ *     "a change adapters must react to" and this is one: an adapter that spelled
+ *     three parameters must drop the third. A defaulted parameter nobody had to
+ *     name was not; a removed one that someone did name is.
  */
-export const ADAPTER_INTERFACE_VERSION = 3 as const;
+export const ADAPTER_INTERFACE_VERSION = 4 as const;
 
 /**
  * The contract every protocol adapter implements.
@@ -59,43 +67,43 @@ export const ADAPTER_INTERFACE_VERSION = 3 as const;
  * union so a heterogeneous list (`Adapter<unknown>[]`, the indexer's run loop)
  * still types, exactly as it did before this parameter existed.
  *
- * TFactors is the factor map this adapter's category is scored on, and it exists
- * because the generalisation #77 performed stopped one file short. `scoreFactors`
- * was widened to `<M extends FactorMap>` and `ScoreResult` was parameterized so
- * that the weighted mean would never acquire a per-category variant — but these
- * two members stayed spelled against `RiskFactorMap`, which `types.ts` is
- * explicit is **lending's** map: `Record<RiskFactorType, …>`, its five keys
- * fixed. `dex` scores `adminKeySafety` and `assetControlSafety`, so the first
- * non-lending adapter could not implement this interface at all — not a design
- * disagreement, an unfinished widening, found by #103 and closed the same way
- * `ScoreResult` was.
+ * THE FACTOR MAP IS DERIVED FROM `TCategory`, NOT A THIRD PARAMETER. Which
+ * factors a category scores is declared once, in `CATEGORY_FACTORS`
+ * (`./weights.ts`), and `FactorMapFor<TCategory>` is that declaration read as a
+ * type. So an adapter cannot name its own key set: declaring `'dex'` and
+ * returning lending's five is a compile error, and so is inventing a key no
+ * rulebook has.
  *
- * DEFAULTED TO `RiskFactorMap`, which is what makes it additive: every existing
- * `Adapter<X, 'lending'>` and every bare `Adapter<unknown>` resolves to exactly
- * the interface it did before, so neither shipped adapter, nor the indexer's run
- * loop, nor `@stenion/db`'s `RiskFactorMap`-typed writes changed. A dex adapter
- * names its map explicitly: `Adapter<AquariusRawData, 'dex', DexFactorMap>`.
+ * That is the #104 revision of #103's `TFactors` parameter, and the reason for
+ * it is that the parameter did not connect to anything. `RiskFactorMap` is
+ * **lending's** map — `Record<RiskFactorType, …>`, its five keys fixed — and
+ * `dex` scores `adminKeySafety` and `assetControlSafety`, so the first
+ * non-lending adapter could not implement this interface at all; #103 opened it
+ * up with a defaulted parameter to get that adapter compiling and flagged the
+ * decision as unreviewed. The review found what the parameter allowed:
+ * `Adapter<Raw, 'dex', RiskFactorMap>` and `Adapter<Raw, 'dex', { madeUpSafety }>`
+ * both compiled, because nothing related the two parameters. Deriving relates
+ * them.
  *
- * It is NOT derived from `TCategory`, deliberately. A `FactorMapFor<C>` would
- * distribute over the category union the way `OperationFor` had to be written
- * carefully to survive, and the default `TCategory = ProtocolCategory` would
- * resolve it to a map requiring *every* category's keys at once — which is
- * exactly the breakage of `Adapter<unknown>` that `OperationFor`'s comment
- * records fighting. Two independent parameters, each defaulted, keeps the
- * heterogeneous list typing.
+ * `FactorMapFor` DISTRIBUTES over the category union, which is what keeps the
+ * default working: `TCategory` defaults to all of `ProtocolCategory` so that a
+ * heterogeneous `Adapter<unknown>[]` still types, and the map then resolves to
+ * the union of every category's — "some category's factors" — rather than to
+ * their intersection, which is the latent bug `OperationFor` in
+ * `operational-state.ts` records being fixed. Checked rather than assumed; see
+ * that type's note in `./weights.ts`.
  */
 export interface Adapter<
   TRawData = unknown,
   TCategory extends ProtocolCategory = ProtocolCategory,
-  TFactors extends FactorMap = RiskFactorMap,
 > {
   readonly metadata: ProtocolMetadata<TCategory>;
 
   fetchRawData(): Promise<TRawData>;
 
-  computeRiskFactors(rawData: TRawData): Promise<TFactors>;
+  computeRiskFactors(rawData: TRawData): Promise<FactorMapFor<TCategory>>;
 
-  score(factors: TFactors): ScoreResult<TFactors>;
+  score(factors: FactorMapFor<TCategory>): ScoreResult<FactorMapFor<TCategory>>;
 
   /**
    * The market's live operational state — which user operations its own gating

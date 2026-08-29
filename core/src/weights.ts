@@ -254,12 +254,16 @@ export const DEX_FACTORS = CATEGORY_FACTORS.dex.factors;
 /**
  * Dex's factor map — the shape `AquariusAdapter.computeRiskFactors` returns.
  *
- * DERIVED FROM `DEX_FACTORS`, never written out. `keyof typeof DEX_FACTORS` is
- * exactly the key set `CATEGORY_FACTORS.dex.factors` declares, so a factor added
- * to or removed from the rulebook changes this type in the same commit and every
- * adapter that builds one stops compiling. Writing the two keys out here would
- * be a second declaration of which factors `dex` scores — the thing this module
- * exists to prevent, one level up from the weights.
+ * DERIVED FROM THE RULEBOOK, never written out: it is `FactorMapFor<'dex'>`,
+ * whose keys are exactly what `CATEGORY_FACTORS.dex.factors` declares, so a
+ * factor added to or removed from the rulebook changes this type in the same
+ * commit and every adapter that builds one stops compiling. Writing the two keys
+ * out here would be a second declaration of which factors `dex` scores — the
+ * thing this module exists to prevent, one level up from the weights.
+ *
+ * A NAME, NOT A SECOND DEFINITION, since #104 — `Adapter` derives the same type
+ * from the category it is given, so this alias is what an adapter's own code
+ * calls the map it builds rather than what the interface demands of it.
  *
  * The lending equivalent is `RiskFactorMap` in `./types.ts`, which predates this
  * module and is spelled against the `RiskFactorType` enum instead. That is not
@@ -268,4 +272,43 @@ export const DEX_FACTORS = CATEGORY_FACTORS.dex.factors;
  * far) and rewriting it as a derived type would change nothing and risk
  * something.
  */
-export type DexFactorMap = Record<keyof typeof DEX_FACTORS, RiskFactor | null>;
+export type DexFactorMap = FactorMapFor<'dex'>;
+
+/**
+ * The factor map a category's rulebook declares — factor keys to factors, with
+ * `null` for one that genuinely doesn't apply.
+ *
+ * THIS IS WHAT `Adapter` SCORES, AND IT IS DERIVED, NEVER CHOSEN (#104). The
+ * interface used to take the factor map as a third type parameter that an
+ * adapter picked for itself, defaulted to lending's `RiskFactorMap`. That was
+ * added in #103 to make the first `dex` adapter compile and was explicitly
+ * recorded as unreviewed; the review found the hole it leaves. Both of these
+ * compiled:
+ *
+ *   class Wrong implements Adapter<Raw, 'dex', RiskFactorMap>       // dex, scored on lending's five
+ *   class AlsoWrong implements Adapter<Raw, 'dex', { madeUpSafety }> // keys no rulebook declares
+ *
+ * Nothing connected `TCategory` to the factor map, so an adapter could declare
+ * one category and publish another's factors, or invent keys outright — in a
+ * codebase whose stated rule is that which factors a category scores is declared
+ * ONCE, here, and fixed. Deriving the map from the category is what makes that
+ * rule a compile error instead of a review note.
+ *
+ * WRITTEN AS A MAPPED TYPE INDEXED BY `C`, not as `Record<FactorsOf<C>, …>`
+ * directly, so it DISTRIBUTES. `Adapter`'s `TCategory` defaults to the whole
+ * `ProtocolCategory` union — that is what lets the indexer hold a heterogeneous
+ * `Adapter<unknown>[]` — and a non-distributive spelling resolves that default
+ * to the keys the categories have in COMMON, which is the same latent bug
+ * `OperationFor` in `operational-state.ts` records being fixed. Distributed, the
+ * default resolves to the UNION of every category's map, which is the honest
+ * reading of "some category's adapter" and is what `toTarget` erases into
+ * `FactorMap`.
+ *
+ * (The #103 decision record predicted this spelling would break `Adapter<unknown>`
+ * by resolving to a map requiring every category's keys at once. It does not —
+ * checked, not assumed, and the record is corrected in
+ * `architecture/monorepo-layout.md`.)
+ */
+export type FactorMapFor<C extends ProtocolCategory> = {
+  [K in C]: Record<keyof (typeof CATEGORY_FACTORS)[K]['factors'] & string, RiskFactor | null>;
+}[C];

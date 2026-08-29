@@ -167,19 +167,34 @@ curl https://stenion.vercel.app/api/v1/protocol/blend
 | `deployedOn`                  | object or null | Same as the leaderboard. See [Not every entry is a protocol](coverage.md#not-every-entry-is-a-protocol).                                                                                                                 |
 | `operationalState`            | object or null | Same as the leaderboard. See [Operational state](#operational-state-is-published-never-scored).                                                                                                                          |
 | `safetyScore`, `computedAt`   |                | Latest **`ok`** run. Both `null` if never successfully scored.                                                                                                                                                           |
-| `factors`                     | object or null | The five-factor breakdown, or `null` if never scored. See below.                                                                                                                                                         |
+| `factors`                     | object or null | The factor breakdown for **this protocol's `category`**, or `null` if never scored. **Not always five keys** — see below.                                                                                                |
 | `methodologyVersion`          | number or null | Which rulebook version the current score was computed under. **Read it with `category`, not alone** — every category's version counter starts at 1, so the pair identifies a rulebook and the number by itself does not. |
 | `lastRunAt`, `lastRunStatus`  |                | Newest run of any status. See [Staleness](health.md#staleness-is-your-problem-too).                                                                                                                                      |
 | `history`                     | array          | Up to 50 recent runs, newest first, each `ok` one carrying its own `factors`. **A discriminated union — see below.**                                                                                                     |
 
 ### The `factors` object
 
-Five keys, always all five present, defined once as a shared taxonomy so they mean the same thing
-for every protocol: `collateralSafety`, `oracleSafety`, `adminKeySafety`, `liquiditySafety`,
-`utilizationSafety`.
+**Its keys are the factors this protocol's `category` is scored on, and they differ per category.**
+Read `factors` by iterating its own keys — never by indexing a fixed list. A `lending` protocol
+carries exactly `collateralSafety`, `oracleSafety`, `adminKeySafety`, `liquiditySafety` and
+`utilizationSafety`; a `dex` protocol carries exactly `adminKeySafety` and `assetControlSafety`.
 
-Each is either a factor object or `null` (the factor genuinely does not apply to that protocol —
-render "N/A", do not treat it as zero).
+> **This is a clarification of `v1`, not a break in it.** Until 2026-08-29 every scored protocol was
+> `lending`, so every `factors` object had the same five keys and this section said so. Registering
+> the first `dex` market made that description wrong rather than making the contract change: the
+> field was always "this protocol's factors", `category` was always published beside it, and a
+> client that indexed `factors.oracleSafety` unconditionally will now read `undefined` on a `dex`
+> entry. Which factors a category scores is published per category in
+> [`methodology/`](https://github.com/stenion-lab/stenion/tree/main/methodology), and adding a
+> category is additive: **treat an unrecognised factor key as data, not as an error.**
+
+`adminKeySafety` appears in both, deliberately — it answers the same question ("who can change the
+rules") from entirely different on-chain data on each side. **That is not a comparability claim.**
+A `dex` `adminKeySafety` of 60 and a `lending` one of 60 were produced by different rules from
+different quantities, exactly as the two overall scores were.
+
+Each value is either a factor object or `null` (the factor genuinely does not apply to that
+protocol — render "N/A", do not treat it as zero).
 
 | Field        | Type            | Notes                                                                                    |
 | ------------ | --------------- | ---------------------------------------------------------------------------------------- |
@@ -264,7 +279,7 @@ on `status`:
   `runAt`.
 - a **`failed`** row carries `error` and `runAt`, and **does not have a `safetyScore` key at all** —
   not `null`, not `0`. The key is absent. Nor a `factors` key: a run that failed produced no
-  breakdown, and an empty object here would read as five factors that all scored nothing.
+  breakdown, and an empty object here would read as every factor scoring nothing.
 
 That absence is deliberate. A failed run is a **gap in our data**, never a score of zero, and giving
 it a `safetyScore: 0` would let a pipeline outage render as a protocol suddenly becoming maximally

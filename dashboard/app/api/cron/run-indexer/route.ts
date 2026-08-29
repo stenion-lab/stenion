@@ -20,11 +20,12 @@ import { timingSafeEqual } from 'node:crypto';
 import { loadEnv } from '@stenion/db';
 import { runIndexerCycle } from '@stenion/indexer';
 
-// pg + Soroban/Horizon I/O need the Node.js runtime. A full cycle (4 targets —
-// three Blend pools and Kinetic) makes several on-chain sim calls each, so allow up
-// to 60s (Vercel Hobby max) rather than the 10s default. The cycle's own
-// wall-clock budget (STENION_CYCLE_BUDGET_MS, 42s) is what keeps it inside this
-// ceiling; see ARCHITECTURE.md on why a budget rather than a fixed schedule.
+// pg + Soroban/Horizon I/O need the Node.js runtime. A full cycle (5 targets —
+// three Blend pools, Kinetic, and one Aquarius pool) makes several on-chain sim
+// calls each, so allow up to 60s (Vercel Hobby max) rather than the 10s default.
+// The cycle's own wall-clock budget (STENION_CYCLE_BUDGET_MS, 50s) is what keeps
+// it inside this ceiling; see architecture/ on why a budget rather than a fixed
+// schedule, and why 50s is the last value that fits under 60.
 //
 // The summary this route returns carries per-target `durationMs` and a whole-cycle
 // `totalMs`. That is the ONLY honest way to check the budget arithmetic: it has to

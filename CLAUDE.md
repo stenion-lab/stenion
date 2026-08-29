@@ -186,18 +186,26 @@ These override any default behavior and are enforced in code and review:
   runs adapters through the `toTarget<T>()` wrapper (see [`indexer/src/index.ts`](indexer/src/index.ts))
   so a heterogeneous adapter list shares one typed run loop. `core/src/adapter.ts` carries
   `ADAPTER_INTERFACE_VERSION` — bump it for breaking interface changes rather than rewriting
-  every adapter at once. It is at **3**: v2 added the required `operationalState(raw)` method
+  every adapter at once. It is at **4**: v2 added the required `operationalState(raw)` method
   (#15), v3 the required `metadata.category` field and the `TCategory` parameter that scopes
-  `operationalState`'s vocabulary to it (#76). Both required rather than optional, deliberately —
-  an optional member is one every future adapter can skip, which is the retrofit debt the constant
-  exists to make visible. **`Adapter`'s third parameter, `TFactors`, did NOT bump it** (#103):
-  it is defaulted to lending's `RiskFactorMap`, so no implementor has to react, and the bar the
-  constant states is a change adapters must react to. A non-lending adapter names all three; a
-  lending one names two and is unchanged. **That parameter is not yet reviewed** — it was resolved
-  inside #103 to make the first `dex` adapter compile at all, and the decision record, the
-  alternatives, and the `@stenion/db` typing gap it leaves for #104 are in
-  [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md). Read it before building on
-  it; do not treat it as settled convention.
+  `operationalState`'s vocabulary to it (#76), v4 made the factor map a function of that same
+  parameter (#104). All required rather than optional, deliberately — an optional member is one
+  every future adapter can skip, which is the retrofit debt the constant exists to make visible.
+- **An adapter declares its category; it does NOT declare its factor map.**
+  `computeRiskFactors`/`score` speak `FactorMapFor<TCategory>`, derived from `CATEGORY_FACTORS`, so
+  an adapter that declares `'dex'` owes exactly the factors `methodology/dex.md` publishes and
+  cannot return lending's five or a key no rulebook has. This replaces the defaulted `TFactors`
+  parameter #103 added under deadline and flagged as unreviewed: the review (#104) found the
+  parameter was never tied to `TCategory`, so `Adapter<Raw, 'dex', RiskFactorMap>` compiled. It is
+  now a settled decision with the alternatives and the two corrected #103 claims recorded in
+  [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md), and guarded by
+  `@ts-expect-error` probes in `core/src/weights.test.ts`.
+- **Precision at the adapter boundary, one open `FactorMap` from the indexer onward.** That split is
+  the answer #103 left open. `IndexTarget.run`, `RunRecord`, `HistoryEntry` and `ProtocolDetail` all
+  carry `FactorMap` — storage and transport enforce no rulebook and must not claim a key set they
+  are not the source of. `getProtocolDetail`'s read-side cast asserts only the non-null the
+  `risk_scores_shape` CHECK guarantees; it used to assert lending's five keys, which was a lie about
+  any `dex` row.
 - **Nothing persisted or published may come from a runtime identifier.** No `constructor.name`,
   `fn.name`, or similar for a value that reaches the database or an API response — use a string
   literal. The workspace packages are bundled and minified into the dashboard's serverless
