@@ -186,9 +186,18 @@ These override any default behavior and are enforced in code and review:
   runs adapters through the `toTarget<T>()` wrapper (see [`indexer/src/index.ts`](indexer/src/index.ts))
   so a heterogeneous adapter list shares one typed run loop. `core/src/adapter.ts` carries
   `ADAPTER_INTERFACE_VERSION` — bump it for breaking interface changes rather than rewriting
-  every adapter at once. It is at **2**: v2 added the required `operationalState(raw)` method
-  (#15). Required rather than optional, deliberately — an optional method is one every future
-  adapter can skip, which is the retrofit debt the constant exists to make visible.
+  every adapter at once. It is at **3**: v2 added the required `operationalState(raw)` method
+  (#15), v3 the required `metadata.category` field and the `TCategory` parameter that scopes
+  `operationalState`'s vocabulary to it (#76). Both required rather than optional, deliberately —
+  an optional member is one every future adapter can skip, which is the retrofit debt the constant
+  exists to make visible. **`Adapter`'s third parameter, `TFactors`, did NOT bump it** (#103):
+  it is defaulted to lending's `RiskFactorMap`, so no implementor has to react, and the bar the
+  constant states is a change adapters must react to. A non-lending adapter names all three; a
+  lending one names two and is unchanged. **That parameter is not yet reviewed** — it was resolved
+  inside #103 to make the first `dex` adapter compile at all, and the decision record, the
+  alternatives, and the `@stenion/db` typing gap it leaves for #104 are in
+  [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md). Read it before building on
+  it; do not treat it as settled convention.
 - **Nothing persisted or published may come from a runtime identifier.** No `constructor.name`,
   `fn.name`, or similar for a value that reaches the database or an API response — use a string
   literal. The workspace packages are bundled and minified into the dashboard's serverless

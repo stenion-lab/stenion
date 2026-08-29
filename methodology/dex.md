@@ -8,8 +8,9 @@ assumed to hold for lending.
 **Which protocols are scored under it: none, yet.** This section is the rulebook, published and
 reviewable _before_ any market is scored under it — which [`../TAXONOMY.md`](../TAXONOMY.md) says is
 the point of writing it first. It was admitted as a gate-checked submission against Aquarius on
-Stellar mainnet (#100); the adapter's read half landed in #101, its scoring is #103, and no market
-is registered to it (#104).
+Stellar mainnet (#100); the adapter's read half landed in #101 and **its scoring half in #103**, so
+every formula below now has code and tests behind it. No market is registered to it (#104), which is
+why nothing is scored: the adapter exists and nothing points it at a pool.
 
 > **This rulebook is complete: two factors, each with a formula, and a reviewed weight table.** The
 > table was deliberately absent when the category was admitted (#100) and landed in its own review
@@ -609,10 +610,12 @@ The 9 non-SAC wasm tokens remain what they were: a route-(a) `value: null` discl
 token and saying the read does not apply. A disclosure is not a zero and not a pass — the token is
 excluded from the computation, not graded badly by it.
 
-**None of this is implemented yet, and the adapter may not reinterpret it.** There is no `dex`
-adapter (#101/#103), so these are rules a future implementation must satisfy, stated before it is
-written — which is the order [`../TAXONOMY.md`](../TAXONOMY.md) requires. `#103` is where they get
-code and tests.
+**Every branch above is implemented and tested (#103), and the adapter may not reinterpret it.**
+The rules were written before the code, which is the order [`../TAXONOMY.md`](../TAXONOMY.md)
+requires; `adapters/aquarius/score.test.ts` now asserts each one individually, including the four
+that no live pool can reach — a reverting `get_privileged_addrs()`, a short role map, a
+contract-held role, and a pool whose every reserve is a wasm contract. All of them return **0**,
+each with a `detail` naming what could not be assessed.
 
 ### Size floor: none, and none pending
 

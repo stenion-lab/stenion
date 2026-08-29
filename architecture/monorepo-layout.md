@@ -45,11 +45,21 @@ TypeScript is configured in four layers (see [`CLAUDE.md`](../CLAUDE.md) for the
 
 ### What each package does
 
-**`@stenion/core`** — the contract everything else agrees on. Defines the `Adapter<TRawData>`
-interface (`fetchRawData` → `computeRiskFactors` → `score`), the `RiskFactorType` enum (the fixed
-five-factor `*Safety` taxonomy), and the shared result types. Adding a factor here is a breaking
-change felt by every adapter, so it's deliberately small and stable. Carries
-`ADAPTER_INTERFACE_VERSION` as a seam for future breaking changes.
+**`@stenion/core`** — the contract everything else agrees on. Defines the
+`Adapter<TRawData, TCategory, TFactors>` interface (`fetchRawData` → `computeRiskFactors` →
+`score`), the `RiskFactorType` enum (**lending's** fixed five-factor `*Safety` taxonomy), the
+per-category factor and weight declarations in `core/src/weights.ts`, and the shared result types.
+Adding a factor to a category is a breaking change felt by every adapter in it, so it's deliberately
+small and stable. Carries `ADAPTER_INTERFACE_VERSION` as a seam for future breaking changes.
+
+All three of `Adapter`'s parameters after the first are **defaulted**, which is what lets the
+indexer keep one heterogeneous `Adapter<unknown>[]` run loop across categories. `TCategory` scopes
+`operationalState`'s operation vocabulary and `metadata.category` to one rulebook; `TFactors` names
+the factor map that rulebook scores, defaulting to lending's `RiskFactorMap` so both lending
+adapters spell only two parameters. `TFactors` was added with the first `dex` adapter, closing a
+widening that stopped one file short — `scoreFactors` and `ScoreResult` had already been made
+generic over `FactorMap` so the weighted mean could never acquire a per-category variant, while
+`Adapter` still required lending's five keys and so made a non-lending adapter unimplementable.
 
 It also owns the pieces of the rulebook that must not differ between adapters, in
 `core/src/scoring.ts`: `scoreFactors()` (the weighted mean — an adapter's `score()` delegates to it
@@ -79,16 +89,104 @@ reads a protocol's on-chain state (Soroban RPC + Horizon), reduces it into its c
 factors using the formulas in that category's `methodology/` file, and produces a weighted
 `safetyScore`. Adapters throw on failure; they never swallow errors.
 
-**`AquariusAdapter` is the exception that proves the shape, and it is deliberate.** It is the first
-`dex` adapter and it **fetches without scoring**: `computeRiskFactors`, `score` and
-`operationalState` throw. The `dex` rulebook they would implement is complete — two factors, their
-formulas and a weight table (`methodology/dex.md`) — and what is missing is the code: it has no
-`score.ts`, because that file arrives with the scoring implementation rather than existing now as a
-file full of throws. **No pool is registered to any target list**, so nothing in the indexer can
-reach it. It is exported so the fixture-capture
-script can. Returning a plausible factor map to satisfy the interface would have made an unscorable
-category indistinguishable from a working one at the indexer's call site, which is the failure the
-two-step category admission exists to prevent.
+**`AquariusAdapter` is the first non-lending adapter, and the shape it takes is what a second
+category costs.** It implements `Adapter<AquariusRawData, 'dex', DexFactorMap>` — three parameters
+where the lending two take two — scores the `dex` rulebook's two factors (`adminKeySafety`,
+`assetControlSafety`, `methodology/dex.md`) and classifies `operationalState` on the shared ladder's
+`swapDisabled` rung. It is otherwise an ordinary four-file adapter: nothing about the pipeline,
+the run loop or the storage schema needed a `dex` special case.
+
+**No pool is registered to any target list**, so nothing in the indexer reaches it yet — which
+markets to register depends on a size census, and one more target makes the cycle infeasible at
+`STENION_CYCLE_CONCURRENCY=1` (see `deploy-architecture.md`). It is exported so the fixture-capture
+script and the snapshot tests can reach it.
+
+### Decision record: `Adapter` gained a `TFactors` parameter (#103) — **not yet reviewed**
+
+**Status: unreviewed.** This was resolved inside #103 because nothing in that issue compiled without
+it, not because it was argued on its merits and signed off. It is recorded here so #104 inherits a
+decision it can see and reopen, rather than a fait accompli. **Anyone picking up #104 should read
+this section before building on it.** If it is wrong, the cost of reversing it is one interface
+signature and two adapter declarations — it has no stored data, no API surface and no migration
+behind it, which is the main reason it was judged safe to resolve in place.
+
+**What changed.** `core/src/adapter.ts`:
+
+```ts
+export interface Adapter<
+  TRawData = unknown,
+  TCategory extends ProtocolCategory = ProtocolCategory,
+  TFactors extends FactorMap = RiskFactorMap, // ← added
+> {
+  computeRiskFactors(rawData: TRawData): Promise<TFactors>; // was Promise<RiskFactorMap>
+  score(factors: TFactors): ScoreResult<TFactors>; // was (RiskFactorMap) => RiskScoreResult
+  // …
+}
+```
+
+**Why it was unavoidable in #103.** `RiskFactorMap` is **lending's** map — `Record<RiskFactorType,
+RiskFactor | null>`, its five keys required — and `types.ts` says so explicitly. `dex` scores
+`adminKeySafety` and `assetControlSafety`. So `AquariusAdapter` could not implement `Adapter` at all:
+not a stylistic problem, a hard compile failure with no local workaround that is not a lie (returning
+four `null`s plus an excess key, or casting through `unknown`).
+
+This is the gap #77 left. That issue widened `scoreFactors` to `<M extends FactorMap>` and
+parameterized `ScoreResult<M>` precisely so the weighted mean could never acquire a per-category
+variant — and stopped one file short of the interface those two members are declared on. #103's own
+issue text anticipated it: "If it turns out to need more, that is a finding worth stopping on,
+because it means the generalisation those issues shipped was incomplete." **It did, and it was.**
+
+**What was NOT done, deliberately.** No new `OperationalLevel` rung (`swapDisabled` already existed
+from #100). No widening of `toOperationalState`. No new shared scoring helper. No change to
+`RiskFactorType`, which stays lending's five and stays the vocabulary every stored
+`risk_scores.factors` row was written against. `ADAPTER_INTERFACE_VERSION` stays at **3** — the
+parameter is defaulted, so no implementor must react, which is the bar that constant states.
+
+**Alternatives considered, and why they lost:**
+
+| Option                                                      | Why not                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spell both members against the open `FactorMap` instead     | Loses precision at every call site: `adapter.score(f)` would return `ScoreResult<FactorMap>`, which is not assignable to the `RiskFactorMap` the indexer's `RunResult` and `@stenion/db` both require. That ripples straight into the indexer and the store — a much larger change than the one it avoids.                                                  |
+| Derive the map from the category, `FactorMapFor<TCategory>` | Distributes over the category union. The default `TCategory = ProtocolCategory` would resolve to a map requiring **every** category's keys at once, breaking the bare `Adapter<unknown>` the indexer's `toTarget<T>()` run loop depends on — the same hazard `OperationFor`'s comment in `operational-state.ts` records being written carefully to survive. |
+| Stop, ship nothing, open a separate issue first             | The honest reading of #103's non-goals, and the one not taken. Everything else in the issue depends on this line, so stopping would have delivered no adapter at all. Recorded here instead so the review still happens, just after the code rather than before it.                                                                                         |
+
+**The open question a reviewer should actually answer**, because this section does not:
+`RiskFactorType` is now doing two jobs — it is lending's factor vocabulary _and_ the shape
+`RiskFactorMap`/`RunRecord`/`ProtocolDetail` are all spelled against. A second category makes those
+two jobs pull apart. `TFactors` papers over that at the adapter boundary only. Whether the right
+end state is per-category factor-map types everywhere, or one open `FactorMap` from the adapter all
+the way through storage, is not decided and is not decided here.
+
+#### `@stenion/db` has never carried a non-lending factor map
+
+Stated plainly because it is the first thing #104 will hit. **The storage round-trips; the types do
+not.**
+
+- **Runtime: fine, and key-agnostic.** `recordRun` passes `JSON.stringify(record.factors)` into a
+  `$4::jsonb` column (migration 0001), and jsonb comes back parsed. Nothing in the write or read path
+  inspects a key, so a two-key `dex` map stores and returns byte-for-byte.
+- **Types: rejected today, and that is the desirable failure.** `RunRecord.factors`,
+  `ProtocolDetail.factors` and `HistoryEntry.factors` are all declared `RiskFactorMap`, and
+  `getProtocolDetail` casts `row.factors as RiskFactorMap`. Passing a `DexFactorMap` to `recordRun`
+  is a compile error — verified, not assumed:
+
+  ```
+  error TS2739: Type 'DexFactorMap' is missing the following properties from type
+  'RiskFactorMap': collateralSafety, oracleSafety, liquiditySafety, utilizationSafety
+  ```
+
+  So #104 stops at the compiler rather than writing a row whose declared type is a lie. That cast in
+  particular is the sharp one: it would type a `dex` row as lending's five keys, and any consumer
+  reading `.oracleSafety` off it would get `undefined` with no error anywhere.
+
+- **Test coverage: lending only.** `store.test.ts`'s `FACTORS` fixture is a single-key object cast
+  `as unknown as RiskFactorMap`, so it proves the mapping is pass-through but asserts nothing about
+  key sets. `store.integration.test.ts` is skipped unless `STENION_TEST_DATABASE_URL` is set, which
+  CI never sets — **no `dex` factor map has ever been written to a real Postgres.**
+
+**#104 must therefore decide, not discover:** whether `RunRecord`/`ProtocolDetail`/`HistoryEntry`
+widen to `FactorMap`, and what `getProtocolDetail`'s cast becomes. That is a change to the published
+API contract's `factors` shape, so it belongs to that issue's review and not to this one.
 
 **One adapter can serve several markets.** `BlendAdapter` takes a `BlendPool` — slug, display name,
 pool contract, mark, links, deployment label — and the module exports `BLEND_POOLS`, the list the

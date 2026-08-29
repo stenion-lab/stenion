@@ -443,10 +443,35 @@ Roughly in priority order, but not committed to dates:
       exists and none is pending** — neither factor is size-sensitive, so there is nothing for one
       to protect.
 
-      **Nothing is scored under it yet, and what is missing is code rather than rules.** The
-      Aquarius adapter's read half landed in #101 and fetches without scoring; its `score.ts` is
-      #103, and registering a pool is #104 — which is itself blocked on a deployment decision, since
-      one more target makes the indexer cycle infeasible at `STENION_CYCLE_CONCURRENCY=1`.
+      **Nothing is scored under it yet, and what is missing is now a registration rather than
+      code.** The Aquarius adapter's read half landed in #101 and its scoring half in #103:
+      `AquariusAdapter` implements both `dex` factors, `operationalState` on the `swapDisabled`
+      rung, and carries frozen mainnet snapshots for all four captured pool shapes — the
+      constant-product and concentrated XLM/AQUA pools at **37**, the three-token stable pool and
+      the wasm-token pool at **24**, the same four numbers the rulebook's worked example publishes.
+      Registering a pool is #104, which is itself blocked on a deployment decision, since one more
+      target makes the indexer cycle infeasible at `STENION_CYCLE_CONCURRENCY=1`.
+
+      **#103 also touched one shared interface, and that change is NOT yet reviewed.** `Adapter`
+      still spelled `computeRiskFactors` and `score` against `RiskFactorMap` — lending's five-key
+      map — which is the one file #77 missed when it widened `scoreFactors` and `ScoreResult` over
+      `FactorMap`, and it made the first non-lending adapter unimplementable. It gained a third type
+      parameter, `TFactors`, defaulted to `RiskFactorMap` so both lending adapters and the indexer's
+      run loop are untouched; the four frozen lending snapshots were verified byte-identical either
+      side of it. `ADAPTER_INTERFACE_VERSION` stays at **3**: nothing an implementor must react to
+      changed. It was resolved to unblock #103 rather than argued on its merits, so the decision
+      record — with the alternatives and the open question it leaves — is in
+      [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md), and **#104 should
+      review it rather than inherit it.**
+
+      **`@stenion/db` was deliberately left alone, and therefore cannot store a `dex` score yet.**
+      The jsonb column and the write path are key-agnostic, so the storage round-trips — but
+      `RunRecord.factors`, `ProtocolDetail.factors` and `HistoryEntry.factors` are all declared
+      `RiskFactorMap`, so passing a two-key `dex` map to `recordRun` is a compile error. That is the
+      desirable failure: #104 stops at the compiler instead of writing a row whose declared type is
+      a lie. Widening those three, and deciding what `getProtocolDetail`'s
+      `row.factors as RiskFactorMap` cast becomes, is #104's call — it changes the published
+      `factors` shape on the API.
 
       **A third factor, `depthSafety`, was proposed and deferred** — the pool's own `estimate_swap`
       simulation, which is the strongest read available and still cannot ship. Aquarius publishes no
