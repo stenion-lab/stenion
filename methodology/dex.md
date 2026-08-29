@@ -6,21 +6,29 @@ in [`lending.md`](lending.md) may be assumed to hold for this category, and noth
 assumed to hold for lending.
 
 **Which protocols are scored under it: none, yet.** This section is the rulebook, published and
-reviewable _before_ an adapter exists — which [`../TAXONOMY.md`](../TAXONOMY.md) says is the point
-of writing it first. It was admitted as a gate-checked submission against Aquarius on Stellar
-mainnet (issue #100); the adapter that will read it is #101/#103, and no market is registered to it.
+reviewable _before_ any market is scored under it — which [`../TAXONOMY.md`](../TAXONOMY.md) says is
+the point of writing it first. It was admitted as a gate-checked submission against Aquarius on
+Stellar mainnet (#100); the adapter's read half landed in #101, its scoring is #103, and no market
+is registered to it (#104).
 
-> **This rulebook is incomplete in one declared place, and cannot score anything until that is
-> closed.** Its **weight table is deliberately absent** — see [Factor weights](#factor-weights) —
-> and it is deferred to its own review rather than filled with plausible numbers.
+> **This rulebook is complete: two factors, each with a formula, and a reviewed weight table.** The
+> table was deliberately absent when the category was admitted (#100) and landed in its own review
+> (#102) — a weight can only ever be a type-(b) unvalidated judgment call, and arguing one inside
+> the issue that argued the factor set would have buried it. Both halves are here now, in
+> [Factor weights](#factor-weights) and [The two dex factors](#the-two-dex-factors), and
 > `CATEGORY_FACTORS.dex` in [`../core/src/weights.ts`](../core/src/weights.ts) carries
-> `status: 'pendingWeights'` for exactly this reason, and the type system — not a comment — is what
-> stops a score being computed from it.
+> `status: 'published'` to match. Every Stenion-chosen number in either formula is listed in
+> [Unvalidated judgment calls](#unvalidated-judgment-calls).
 >
 > **The category ships with TWO factors, not the three the submission proposed.** `depthSafety` is
 > deferred by [question A](#question-a--resolved-no-depth-factor-until-there-is-a-unit-of-value),
 > which is resolved rather than open. Gate 0 is re-argued for the two that remain in
 > [Gate 0, re-argued](#gate-0-re-argued-for-two-factors).
+>
+> **There is no size floor, and none is pending.** Neither surviving factor is size-sensitive, so
+> there is nothing for a floor to protect — see
+> [Size floor: none, and none pending](#size-floor-none-and-none-pending). This is a consequence of
+> question A's resolution, not an open item.
 
 **Everything below was read from mainnet, not from documentation.** That distinction is
 load-bearing for this category in a way it was not for lending: `github.com/AquaToken/soroban-amm`
@@ -28,7 +36,12 @@ load-bearing for this category in a way it was not for lending: `github.com/Aqua
 no source to read. Every interface claim here comes from the contract spec in the deployed wasm
 (`getContractMethods`) and from instance storage, which is what Gate 8 asks for anyway.
 
-**All readings in this section: mainnet ledger 64,152,946, 2026-08-27T20:00Z.**
+**Two dated read sets appear below, and each reading says which it is from.** The census
+readings — the 340-pool survey, the role structure, the issuer-flag sample, the kill-switch state —
+are **mainnet ledger 64,152,946, 2026-08-27T20:00Z**, taken for #100. The
+[worked example](#factor-weights) is computed from the mainnet fixtures #101 captured on
+**2026-08-29T09:35Z**, which live in `adapters/fixtures/aquarius/` and are checked into the repo, so
+its arithmetic can be re-derived rather than taken on trust.
 
 ### Version changelog
 
@@ -40,48 +53,122 @@ changelog is `dex`'s.** `dex` v1 and `lending` v1 are not two editions of one ru
 not older than the other; they are two different rulebooks that each start counting at 1. The
 category is stored beside the integer because the integer alone does not identify a rulebook.
 
-| Version | Effective    | Change                                                                                                                                                                                                                                                                                   |
-| ------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1**   | not yet live | The initial two-factor model as documented here — `adminKeySafety` and `assetControlSafety` — with no weight table. `depthSafety` is deferred (question A, option 4) and no size floor is needed by either factor that ships. No run has been stamped with it; no score exists under it. |
+| Version | Effective    | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1**   | not yet live | The initial two-factor model as documented here — `adminKeySafety` (role posture and the upgrade reaction window) and `assetControlSafety` (issuer freeze and clawback) — weighted 0.55 / 0.45. `depthSafety` is deferred (question A, option 4) and no size floor is needed by either factor that ships. The factor set was admitted in #100 and the weight table reviewed in #102; both are version **1**, because no score was ever published under the factor set alone. No run has been stamped with it; no score exists under it. |
 
 One row, and it describes a rulebook nothing has been scored under yet. That is deliberate: Gate 7
 requires a category to arrive at version 1 rather than acquire a version once it starts producing
 numbers, so the counter exists from the moment the rulebook is published. **The first stored `dex`
-row will carry version 1** — settling the weight table (#102) does not bump it, because there is no
-prior published number for a weight to make incomparable. From the first stored row onward the
-ordinary rule in [What bumps the version](index.md#what-bumps-the-version-going-forward) applies
-without exception.
+row will carry version 1** — settling the weight table did not bump it, because there was no prior
+published number for a weight to make incomparable: a rulebook that could not compute a score cannot
+have produced one that a weight made non-comparable. From the first stored row onward the ordinary
+rule in [What bumps the version](index.md#what-bumps-the-version-going-forward) applies without
+exception, and the next change to either weight is a version 2.
 
 History is **not backfilled across a bump, and cannot be**, here as everywhere: `risk_scores`
 stores only outputs, never the raw on-chain inputs a run was computed from.
 
 ### Factor weights
 
-**There is deliberately no weight table in this section yet.**
+Dex's weights, and dex's only. This table is the published face of `CATEGORY_FACTORS.dex` in
+[`../core/src/weights.ts`](../core/src/weights.ts), which is where the adapter reads them from — no
+adapter contains a weight of its own, and `core/src/scoring.test.ts` parses this table and fails if
+the two disagree in either direction.
 
-Weights are a judgment call, not a reading. [`../TAXONOMY.md`](../TAXONOMY.md) Gate 1 requires every
-threshold to either name the on-chain field it anchors to or be labelled an unvalidated judgment
-call with its reasoning and its direction of error; a weight can only ever be the second kind.
-Publishing three numbers here to make the section look complete would put unanchored values into
-the one document that is supposed to be the source of truth for them — and it would do it in the
-same change that argued the factor set, which is precisely the review the two-step admission exists
-to separate.
+| Factor               | Weight   |
+| -------------------- | -------- |
+| `adminKeySafety`     | 0.55     |
+| `assetControlSafety` | 0.45     |
+| **Total**            | **1.00** |
 
-So this category is admitted in two steps, and it is currently between them:
+**Worked example** — the Aquarius XLM/AQUA constant-product pool
+`CCSY43EHJAHT3NQDYKAMJXRFBEEH7OXDL3J3VNGO33UUSEXWNN27GBIZ`, from the mainnet fixture captured
+**2026-08-29T09:35:43Z** (`adapters/fixtures/aquarius/constant-product-mainnet.ts`), dex methodology
+v1:
 
-|                                                  |                                                                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| **Step 1 — the factor set (this section, #100)** | Which failures are scored, what each factor's on-chain anchor is, what was rejected. Reviewable on its own, and reviewed. |
-| **Step 2 — the weight table (#102)**             | What each factor's share of the overall score is, argued as a judgment call and labelled as one. **Not done.**            |
+`10×0.55 + 70×0.45 = 37.0 → 37`
 
-Until step 2 lands, `CATEGORY_FACTORS.dex` declares `status: 'pendingWeights'` and its factor
-entries carry **no `weight` property at all** — not a zero, not a placeholder. An unweighted
-declaration is a different TypeScript type from a weighted one, so reading a weight off it is a
-compile error rather than an `undefined` that would become `NaN` inside `scoreFactors` and publish
-a confident-looking `0`. `core/src/weights.test.ts` asserts the property is absent at runtime too,
-and `core/src/scoring.test.ts` asserts this section publishes no weight table while the status says
-pending — so the document and the code cannot drift apart in either direction, including into
-agreement on a number nobody reviewed.
+Both terms, derived from that fixture's own fields so the arithmetic is checkable rather than
+asserted:
+
+**`adminKeySafety` = 10.** Role posture is the minimum over the seven roles
+([§1](#1-adminkeysafety--seven-roles-and-how-long-you-get-to-react-to-a-code-change-weight-055)):
+
+| Role                  | Read from the fixture               | Base | Activity penalty | Score  |
+| --------------------- | ----------------------------------- | ---- | ---------------- | ------ |
+| `Admin`               | `signerCount 3`, `high_threshold 2` | 90   | −30 (96 ops)     | 60     |
+| `EmergencyAdmin`      | `signerCount 1`, `high_threshold 0` | 40   | −0 (0 ops)       | 40     |
+| `EmergencyPauseAdmin` | `signerCount 1`, `high_threshold 0` | 40   | −0 (0 ops)       | 40     |
+| `PauseAdmin`          | `signerCount 1`, `high_threshold 0` | 40   | −0 (0 ops)       | 40     |
+| `OperationsAdmin`     | `signerCount 1`, `high_threshold 0` | 40   | −0 (0 ops)       | 40     |
+| `RewardsAdmin`        | `signerCount 1`, `high_threshold 0` | 40   | −30 (200 ops)    | **10** |
+| `SystemFeeAdmin`      | `signerCount 1`, `high_threshold 0` | 40   | −30 (200 ops)    | **10** |
+
+`rolePosture = min(…) = 10`. The fixture's `upgrade.deadline` is `0n` on both the pool and the
+router, so `upgradeCeiling = 100` and the ceiling does not bind: `min(10, 100) = 10`.
+
+**`assetControlSafety` = 70.** The minimum over the pool's two reserve tokens
+([§2](#2-assetcontrolsafety--can-a-third-party-freeze-or-seize-what-the-pool-holds-weight-045)):
+
+| Reserve token    | Read from the fixture                                                | Score  |
+| ---------------- | -------------------------------------------------------------------- | ------ |
+| XLM `CAS3J7GY…`  | SAC, `issuer.status = noIssuer` — no issuer account exists           | 100    |
+| AQUA `CAUIKL3I…` | SAC, issuer `GBNZILST…`, all four flags `false`, not `authImmutable` | **70** |
+
+`min(100, 70) = 70`.
+
+**The other three fixtures, for the spread** — same weights, same formulas, computed the same way,
+from the same 2026-08-29 capture. All four pools read the same admin posture, so
+`assetControlSafety` is the only term that moves:
+
+| Fixture                    | Pool                     | `adminKeySafety` | `assetControlSafety`                       | Score |
+| -------------------------- | ------------------------ | ---------------- | ------------------------------------------ | ----- |
+| `constant-product-mainnet` | XLM/AQUA                 | 10               | 70                                         | 37    |
+| `concentrated-mainnet`     | XLM/AQUA                 | 10               | 70                                         | 37    |
+| `stable-mainnet`           | USDC/USDx/yUSDC          | 10               | 40 (Circle USDC is `auth_revocable`)       | 24    |
+| `wasm-token-mainnet`       | USDC (SAC) / USDC (wasm) | 10               | 40 (the wasm token is excluded, route (a)) | 24    |
+
+> **The weights are an unvalidated judgment call, not an external fact.** `adminKeySafety` carries
+> more because its subject is the pool's **own code and role set**: a compromise there reaches every
+> token the pool holds, the fee it charges, whether it trades at all, and the code path an LP's
+> withdrawal runs through. `assetControlSafety` reaches only the balances of one issuer's own
+> asset and cannot touch the pool's code — a pool holding one flagged token and one clean one has a
+> fraction of its value exposed, and the AMM's withdraw path still works.
+>
+> It is **close behind rather than a minor term** because it is the one failure Aquarius cannot
+> mitigate and the LP gets no warning for: a clawback is a single issuer transaction with no window
+> at all, while a code change is announced by `UpgradeDeadline` before it lands. Those two arguments
+> nearly cancel, which is why the gap is 0.10 rather than lending's spread — **the ordering is the
+> claim, and the gap is deliberately small.**
+>
+> **Direction of error:** if the split is wrong it is wrong by under-weighting issuer control. A
+> reader who holds that unmitigable-and-unannounced should dominate would push toward 0.45 / 0.55,
+> and there is no external framework that anchors against them. Full label and the rest of the list
+> in [Unvalidated judgment calls](#unvalidated-judgment-calls).
+>
+> **They were not chosen to make the scores spread out, and must not be.** All 340 pools shared one
+> admin posture in the 2026-08-27 census, and the four pools captured on 2026-08-29 still did — so
+> `adminKeySafety` discriminates between Aquarius markets not at all today and `assetControlSafety`
+> carries the whole variance, as the four-fixture table above shows.
+> Down-weighting the constant factor to widen the registry's range would be calibrating a **category
+> rulebook** against **one protocol's current data**, which is the failure this document refuses
+> everywhere else. A weight states which failure matters more, not which reading varies more.
+
+**Both steps of the two-step admission are now done.** [`../TAXONOMY.md`](../TAXONOMY.md) admits a
+category in two reviews, and this one passed through both:
+
+|                                            |                                                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| **Step 1 — the factor set (#100)**         | Which failures are scored, what each factor's on-chain anchor is, what was rejected. Reviewable on its own, and reviewed. |
+| **Step 2 — the weight table (#102, this)** | What each factor's share is and what each formula computes, argued as judgment calls and labelled as such. **Done.**      |
+
+Between the two, `CATEGORY_FACTORS.dex` declared `status: 'pendingWeights'` and its factor entries
+carried **no `weight` property at all** — not a zero, not a placeholder — so reading a weight off one
+was a compile error rather than an `undefined` that would become `NaN` inside `scoreFactors` and
+publish a confident-looking `0`. It now declares `status: 'published'`, and the table above is
+pinned against it by `core/src/scoring.test.ts` in both directions: a weight edited here alone, or
+there alone, fails.
 
 ### The two dex factors
 
@@ -220,7 +307,7 @@ reserve is zero, would score **0** — never 100, and never a skipped factor, ma
 > [question A](#question-a--resolved-no-depth-factor-until-there-is-a-unit-of-value). **No adapter
 > may implement this factor** until that changes.
 
-#### 1. `adminKeySafety` — seven roles, and how long you get to react to a code change
+#### 1. `adminKeySafety` — seven roles, and how long you get to react to a code change (weight 0.55)
 
 **Anchors:** `get_privileged_addrs() -> Map` on the router and on every pool; the `UpgradeDeadline`
 and `FutureWASM` entries in contract instance storage; Horizon `/accounts/{G…}` for each role's
@@ -271,14 +358,83 @@ and it is not the one Aquarius's own auditor recommended — Certora's Appendix 
 Admin to be "a multisig or DAO" and for the owner key to be kept offline. Both halves are readable,
 and both disagree with the recommendation. Publishing that disagreement is the factor doing its job.
 
+**Formula — a per-account tier, minimised over the roles, then capped by the upgrade state.**
+
+Two components, each computed from the readings above, combined by taking the worse of the two.
+
+_Component 1 — role posture,_ from `get_privileged_addrs()` and Horizon `/accounts/{G…}`:
+
+```
+base = 90   signerCount > 1 AND high_threshold > 1        # N-of-M multisig
+       40   a classic account that is not a multisig      # single master key
+        0   a `C…` contract address, or the lookup failed # cannot assess -> unsafe end
+
+activityPenalty = min(30, recentOps × 3)     # recentOps = operations in the last 30 days
+accountScore    = clamp(base − activityPenalty, 0, 100)
+
+roleScore   = min(accountScore) over the addresses that role holds
+rolePosture = min(roleScore) over the seven roles
+```
+
+_Component 2 — the upgrade reaction window,_ from `UpgradeDeadline` and the fetch timestamp:
+
+```
+upgradeCeiling = 100   UpgradeDeadline == 0                # no code change is scheduled
+                  40   UpgradeDeadline >  fetchedAt        # scheduled; the window is still open
+                   0   UpgradeDeadline <= fetchedAt, non-zero
+                                                           # matured: applicable at the next
+                                                           # ledger, with no warning left
+```
+
+```
+adminKeySafety = min(rolePosture, upgradeCeiling)
+```
+
+**Why these numbers:**
+
+- **The per-account tier is lending's, adopted rather than re-argued** — `90` for an N-of-M
+  multisig, `40` for a single master key, `−3` per operation capped at `−30`, exactly as
+  [lending §3](lending.md#3-adminkeysafety--admin-signer-structure--activity-weight-020) publishes
+  them. The reading underneath is identical on both sides: Stellar's account threshold model and a
+  30-day operation count, from the same two Horizon calls. Inventing a second set of integers for
+  the same reading would be two rulebooks for one question — which is the drift the shared
+  `adminKeySafety` key exists to prevent, applied to the numbers rather than to the name. So the
+  _split_ is anchored exactly as it is there (a 1-of-1 key is a single point of unilateral
+  compromise; `signerCount > 1 AND high_threshold > 1` provably is not, per Stellar's own threshold
+  model), and the _exact integers_ remain a labelled judgment call exactly as they are there.
+- **The contract-address branch is `0` here and `60` in lending, and that divergence is the one
+  deliberate departure.** Argued in
+  [Cannot-assess](#cannot-assess-stated-per-factor--and-what-is-a-failed-run-instead) below: a
+  contract admin is a _known, named_ structure lending chose not to grade, while an Aquarius role
+  that is not a classic account is a structure we did not expect and cannot describe.
+- **The `40` in `upgradeCeiling` is not a new constant** — it is the single-master-key tier, reused.
+  While a code change is scheduled, the LP's only remaining protection is a countdown whose length
+  cannot be read at all, so the market is graded no better than one whose rules a lone key can
+  change. The rule introduces no integer this document did not already publish.
+- **The `0` once the deadline has matured is a reading, not a choice.** What this component grades is
+  `UpgradeDeadline − now`, and once that is non-positive the measured warning is zero. The chain
+  states the deadline and the chain states the time; there is no Stenion constant in that branch.
+- **`FutureWASM` is read but does not enter the formula.** Every contract read on 2026-08-29 carried
+  a `FutureWASM` equal to its own running hash, so presence is the quiescent state rather than the
+  signal — `UpgradeDeadline` is what says a change is scheduled. `FutureWASM` and whether it differs
+  from the running hash are published in the factor's `detail` string, because a reader wants to know
+  _which_ code is staged, and they are not graded because the deadline already carries the fact.
+
+**Two of the choices above are unvalidated judgment calls** — combining the seven roles by `min`,
+and the pending-upgrade ceiling. Both are labelled, with their direction of error, in
+[Unvalidated judgment calls](#unvalidated-judgment-calls).
+
 **Two limits, stated rather than papered over:**
 
-- **The timelock _duration_ is not readable.** `ADMIN_ACTIONS_DELAY` is a compile-time constant with
-  no getter, and the source repository is gone. So the factor can grade the **remaining** window
-  when an upgrade is pending, and can state that none is pending — it cannot state how long the
-  window would be. Anything else would be an invented number, which ground rule 4 forbids. This
-  takes Gate 2 **route (a)**: a `value: null` disclosure component saying the duration is not
-  readable from the contract.
+- **The timelock _duration_ is not readable, and that is why `upgradeCeiling` is a state rather than
+  a curve.** `ADMIN_ACTIONS_DELAY` is a compile-time constant with no getter, and the source
+  repository is gone. The chain states the deadline and the chain states the time, so the factor can
+  say whether a window is open, say when one has matured, and publish the seconds remaining — what
+  it cannot do is say what fraction of the window is left, because it never learns the whole. Any
+  grading of the remaining window's _length_ would need a threshold in seconds that Aquarius does
+  not state, which is an invented number and ground rule 4 forbids it. So the duration itself takes
+  Gate 2 **route (a)**: a `value: null` disclosure component saying it is not readable from the
+  contract, published beside the factor rather than folded into it.
 - **The Emergency Admin can bypass the delay.** In Aquarius's own words, in their response to
   Certora's H-01: "In the case of system vulnerability fixes, delay may be bypassed by the
   Emergency Admin role." So the reaction window is conditional on one key choosing not to skip it —
@@ -295,11 +451,19 @@ does: `ADMIN_ACTIONS_DELAY` is a compile-time constant in code we cannot read, a
 Admin's bypass is a property of the deployed contract's authorisation logic. Both are fixed facts
 about an unreadable quantity, which is exactly the shape route (a) exists for.
 
-#### 2. `assetControlSafety` — can a third party freeze or seize what the pool holds
+#### 2. `assetControlSafety` — can a third party freeze or seize what the pool holds (weight 0.45)
 
-**Anchors:** each reserve token contract's instance `executable` and its `AssetInfo` storage entry
-(which identifies a Stellar Asset Contract and names its classic issuer), then Horizon
-`/accounts/{issuer}` for that issuer's `flags`.
+**Anchors:** each reserve token contract's instance `executable` (a Stellar Asset Contract's is
+`contractExecutableStellarAsset`) and its `METADATA` instance entry, whose `name` is `CODE:ISSUER`
+for a classic asset and the bare string `native` for XLM, then Horizon `/accounts/{issuer}` for that
+issuer's `flags`.
+
+> **Corrected from the submission, which named an `AssetInfo` storage key.** There is no such key;
+> #101 found the issuer in `METADATA` by probing the deployed token contracts. The Gate 8 claim is
+> unchanged — the issuer is read from the token contract's own instance storage, not from an
+> aggregator — only the key name was wrong. The `native` counter-example gets sharper as a result:
+> XLM's `METADATA.name` is the bare string `native`, which is why a SAC is detected from its
+> `executable` and never from the shape of its name.
 
 **The failure it detects, and it has no analogue in lending's five:** an Aquarius pool can be
 created permissionlessly against any token. If that token is a Stellar Asset Contract whose issuer
@@ -309,8 +473,8 @@ admin posture protects against it. Aquarius's auditor named this too: Certora **
 protection for AMM Users."**
 
 Readable, with real variance. Of **205** distinct tokens across the 340 pools, **196 are Stellar
-Asset Contracts** (`executable = contractExecutableStellarAsset`, issuer in `AssetInfo`) and 9 are
-wasm contracts. Sampled issuer flags, 2026-08-27:
+Asset Contracts** (`executable = contractExecutableStellarAsset`, issuer parsed out of `METADATA`)
+and 9 are wasm contracts. Sampled issuer flags, 2026-08-27:
 
 - **`USDC:GA5ZSEJY…`** (Circle, `home_domain = circle.com`) — **`auth_revocable: true`**. Same for
   **`EURC:GDHU6WRG…`**.
@@ -319,6 +483,48 @@ wasm contracts. Sampled issuer flags, 2026-08-27:
 - AQUA, yXLM, USDx, EURx, BLND, SSLX, WHLAQUA, XRF — all four flags false.
 - And a **second asset also called `USDC`**, issuer `GCBYVQH3…`, `home_domain = mirrasets.com`,
   sitting in the same registry as Circle's. That is Certora M-02 in the live data, not in theory.
+
+**Formula — a per-token tier on the issuer's flags, minimised over the pool's reserves:**
+
+```
+Per reserve token:
+    100   a SAC with no issuer account at all — native XLM
+    100   auth_immutable set, with auth_revocable AND auth_clawback_enabled both clear
+     70   auth_revocable and auth_clawback_enabled both clear, auth_immutable not set
+     40   auth_revocable set, auth_clawback_enabled clear
+      0   auth_clawback_enabled set
+      0   the token IS a SAC and the Horizon read for its issuer failed
+      -   not a SAC: excluded from the computation, route-(a) disclosure (see below)
+
+assetControlSafety = min(tokenScore) over the graded tokens
+                     0 when no token is gradable
+```
+
+**The order the tiers are tested in is load-bearing.** Clawback is tested before revocable, and both
+before immutable, because `auth_immutable` freezes whatever the flags currently _are_ — it is a
+credit only when what it freezes is clean. An issuer that is both immutable and revocable has made
+its freeze power permanent and scores **40**, not 100. Testing immutability first would invert that.
+
+**`auth_required` moves no number, deliberately.** It gates who may _acquire_ the asset; it does not
+let an issuer touch a balance that already exists. The power to freeze one is `auth_revocable` and
+the power to take it is `auth_clawback_enabled`. `auth_required` is read and published in the
+factor's `detail` string, because it describes the asset a reader is looking at, and it is not graded
+because it does not answer this factor's question.
+
+**Why these numbers.** The **ordering is anchored** to what Stellar's account flags let an issuer do,
+which is a protocol-level fact and not a Stenion preference: seizure (`auth_clawback_enabled`)
+strictly dominates freezing (`auth_revocable`), which strictly dominates an issuer holding neither,
+which is in turn a weaker statement than an issuer that can never acquire either — and weakest of
+all against an asset with no issuer account for anyone to act from. The **spacing** — the `40` and
+the `70` — is an unvalidated judgment call, labelled in
+[Unvalidated judgment calls](#unvalidated-judgment-calls).
+
+**Why 70 and not 100 for an issuer whose flags are clean.** Because `auth_revocable` is one
+`SET_OPTIONS` away for any issuer that has not set `auth_immutable`, so "clean today" is a strictly
+weaker statement than "cannot become dirty". That distinction is the whole reason the second asset
+also called `USDC` (`GCBYVQH3…`, `home_domain = mirrasets.com`) is worth publishing about: its flags
+read exactly like a well-run issuer's, and in both cases the reading is one transaction from
+changing. Scoring it 100 would publish the reading as a guarantee.
 
 **The 9 wasm tokens have no issuer-flag equivalent** (SolvBTC, xSolvBTC, BnUSD, XAUM, and wasm
 USDC/USDT variants). They take Gate 2 **route (a)**: a `value: null` disclosure component naming the
@@ -352,11 +558,11 @@ cannot-assess branch and must not be graded 0, or a blip in our own network path
 "dangerous admin control" across every pool at once. Everything **localized** — one call, one role,
 one issuer — is a cannot-assess branch and takes the 0.
 
-| Factor               | Cannot-assess branch                                                                       | Resolves to                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `adminKeySafety`     | `get_privileged_addrs()` reverts; returns fewer than the seven roles; a role is ungradable | **0**                                                                    |
-| `assetControlSafety` | A SAC issuer's Horizon lookup fails; no reserve token is readable at all                   | **0**                                                                    |
-| _(disclosures)_      | Timelock duration; Emergency Admin bypass; the 9 non-SAC wasm tokens                       | **Not a branch** — route-(a) `value: null`, moves the number neither way |
+| Factor               | Cannot-assess branch                                                                                                                               | Resolves to                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `adminKeySafety`     | `get_privileged_addrs()` reverts; returns fewer than the seven roles; a role is ungradable; the contract carries no `UpgradeDeadline` entry at all | **0**                                                                    |
+| `assetControlSafety` | A SAC issuer's Horizon lookup fails; no reserve token is readable at all                                                                           | **0**                                                                    |
+| _(disclosures)_      | Timelock duration; Emergency Admin bypass; the 9 non-SAC wasm tokens                                                                               | **Not a branch** — route-(a) `value: null`, moves the number neither way |
 
 **`adminKeySafety`.** Three ways the input can be incomplete, all resolving to **0**:
 
@@ -371,6 +577,12 @@ one issuer — is a cannot-assess branch and takes the 0.
   a posture assessment of an admin set we know is incomplete. **0.**
 - **A role reads but cannot be graded** — its address is not a classic `G…` account, so there is no
   signer set, threshold or activity history behind it. **0.**
+- **The contract carries no `UpgradeDeadline` entry at all** — the raw shape records this as
+  `deadline: null`, which is a different statement from `0n` and must not be collapsed into it: one
+  says the contract answered "nothing pending", the other says this contract does not keep the field
+  the upgrade component reads. Both the router and pools of all three types carried it on
+  2026-08-29, so its absence would mean an unexpected contract version, and half this factor's input
+  would be missing. **0**, on the same reasoning as a short role map.
 
 > That third case argues with an existing precedent, and the resolution is recorded rather than
 > assumed. Lending's `adminKeySafety` sends its equivalent to a clearly-flagged neutral **60**, on
@@ -401,6 +613,152 @@ excluded from the computation, not graded badly by it.
 adapter (#101/#103), so these are rules a future implementation must satisfy, stated before it is
 written — which is the order [`../TAXONOMY.md`](../TAXONOMY.md) requires. `#103` is where they get
 code and tests.
+
+### Size floor: none, and none pending
+
+**There is no size floor in this rulebook, and there is no unwritten one waiting to be added.**
+Gate 4 asks for a size below which a published number stops carrying information. For the two
+factors that ship, no such size exists — and that is a property of what they measure, not a gap left
+open:
+
+- **[`adminKeySafety`](#1-adminkeysafety--seven-roles-and-how-long-you-get-to-react-to-a-code-change-weight-055) reads the same seven roles whatever the pool holds.** A pool with 3
+  stroops in it has the same `Admin`, the same six single-signer keys, the same `UpgradeDeadline` and
+  the same Horizon signer sets as one holding 10,000 XLM. Every input is a property of the contract
+  and of the accounts that control it; not one of them is a quantity of anything.
+- **[`assetControlSafety`](#2-assetcontrolsafety--can-a-third-party-freeze-or-seize-what-the-pool-holds-weight-045) reads the same issuers.** Whether Circle can freeze the pool's USDC
+  does not depend on how much USDC is in it. A dust pool holding a clawback-enabled asset is exactly
+  as exposed as a deep one.
+
+**Nothing here degrades as a market gets smaller, so there is nothing for a floor to protect.**
+Lending needs one for the opposite reason, spelled out in
+[the market-size floor](lending.md#the-market-size-floor): every one of its five factors falls to a
+can't-assess branch on an empty market and every one of those branches is `0`, so an empty market
+would publish a danger-band number meaning the opposite of the truth. Neither dex factor has that
+failure mode — an empty pool's roles and issuers still read, and the number they produce is still
+true of it.
+
+**This is a consequence of [question A](#question-a--resolved-no-depth-factor-until-there-is-a-unit-of-value)'s resolution, not an open item**, and the distinction is
+the whole point. The census that would motivate a floor is real and dated — of the 148 XLM-paired
+pools on 2026-08-27, **18 held zero XLM and 59 held under 1 XLM**, many of them 1–3 stroops, while
+only 16 held more than 10,000 — but a floor is needed by a **size-sensitive factor**, and the one
+that would have been size-sensitive (`depthSafety`) is deferred. **A floor becomes necessary again
+the moment `depthSafety` lands**, which is the same moment the unit of value to express one in would
+exist. Writing one before then would mean choosing a denomination for a factor that does not exist,
+in a category with no unit of value — the permanent, one-protocol decision question A declined to
+make.
+
+**No number is copied from lending's market-size floor or its minimum-size filter, and none may be.**
+Those are denominated in USD against a lending pool's supplied value, which is a quantity this
+category cannot compute.
+
+**What this does not claim, and where an under-sized market goes.** It does not claim a 3-stroop pool
+is worth anyone's attention — it claims that the two numbers this rulebook publishes about one are
+as true of it as they are of a deep pool, which is a statement about the factors and not about the
+market. Nothing is excluded for size, so no pool needs a coverage entry on those grounds. Which
+pools are **registered** is a separate reviewed decision (#104) about what is worth publishing, and
+never a statement that an unregistered pool could not be scored.
+
+---
+
+### Unvalidated judgment calls
+
+[`../TAXONOMY.md`](../TAXONOMY.md) Gate 1 requires every threshold in a rulebook to either name the
+on-chain field it anchors to or be labelled an **unvalidated judgment call**, in **both** the code
+and `methodology/`, with its reasoning and its direction of error stated. **This is the complete list
+for `dex` v1.** Every other number in either formula names a field or is itself a reading; where one
+is adopted from lending rather than chosen here, that is said below rather than left to be noticed.
+
+| Constant                                      | What it is                                             | Direction of error, in one line                                                                            |
+| --------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| the two weights, `0.55` / `0.45`              | each factor's share of the overall score               | under-weights issuer control if wrong; the gap is deliberately small because the ordering is the claim     |
+| combining the seven roles by `min`            | how seven separately-read roles become one number      | understates safety, never overstates it — a weak minor role binds as hard as a weak `Admin`                |
+| the pending-upgrade ceiling, `40`             | what a scheduled code change does to the number        | too harsh for a routine announced upgrade, far too lenient for a hostile one                               |
+| the asset-control tier spacing, `40` and `70` | how far apart freeze-capable and clean-but-mutable sit | `40` leans lenient, `70` conservative — and `min` makes the lenient end bind, so this one reads generously |
+
+**The two weights, `0.55` / `0.45`.** Argued at length in [Factor weights](#factor-weights) and
+labelled in [`../core/src/weights.ts`](../core/src/weights.ts). No external framework anchors them.
+If the split is wrong it is wrong by under-weighting issuer control, and a reader who holds that
+unmitigable-and-unannounced should dominate would push toward 0.45 / 0.55. The gap is 0.10 rather
+than lending's spread because the two arguments nearly cancel: `adminKeySafety` reaches more of the
+pool, `assetControlSafety` reaches it with no warning and no remedy.
+
+**Combining the seven roles by `min`.** Every one of the seven can act unilaterally within its own
+scope, so an attacker takes whichever key is weakest and the weakest is what the number should
+report. The cost is that `min` treats the seven as equally consequential, which they are not — a
+`SystemFeeAdmin` compromise is not an `Admin` compromise — so a pool whose only weak key is a minor
+one is graded as though the code-upgrade key were weak. **It therefore understates safety and never
+overstates it**, which is the direction ground rule 4 requires a judgment call to lean. Two
+alternatives were considered:
+
+- **Weighting the roles by how much each can do.** It would fix the objection exactly, and it needs
+  **seven** Stenion-chosen numbers where `min` needs none — turning a four-row type-(b) list into a
+  ten-row one, which by TAXONOMY.md's own framing would itself be the finding.
+- **Grading the owner key alone.** Rejected outright. Aquarius's `Admin` is a 2-of-3 multisig, so
+  this would publish a comfortable number while ignoring six live single-signer keys that can pause
+  the market, move fees and set rewards. It is the alternative that most looks like a simplification
+  and is in fact a decision to stop reading six of the seven readings.
+
+**The pending-upgrade ceiling, `40`.** It introduces no integer this document did not already
+publish — it is the single-master-key tier, reused on the reasoning that a scheduled code change
+leaves the LP holding a countdown of unreadable length rather than a signer structure. Direction of
+error, both ways: it is **too harsh** for a routine, correctly-announced upgrade, because it lowers
+the number of a protocol for using the very two-step mechanism this factor credits it for; and it is
+**far too lenient** if the staged code is hostile, in which case no score would be adequate. It
+leans conservative, and it is **unexercised today** — `UpgradeDeadline` read `0` on the router and on
+pools of all three types on 2026-08-29. The alternative was to leave the pending state ungraded and
+publish it as a disclosure; that was declined because the reaction window is the failure mode this
+factor's [Gate 0 argument](#gate-0-re-argued-for-two-factors) rests on being able to see, and a
+factor that discloses it is a role-posture factor with a footnote.
+
+**The asset-control tier spacing, `40` and `70`.** Only the two interior values are chosen; the
+ordering around them is anchored to what Stellar's flags let an issuer do.
+
+**Direction of error, and it is the one entry in this list that is not symmetric.** `40` for
+freeze-capable **leans lenient**: to an LP, a freeze that is never lifted is indistinguishable from
+a seizure, and `40` asserts the two differ. `70` for clean-but-mutable **leans conservative**: it
+refuses to call a mutable issuer as safe as an asset with no issuer, and so understates a
+long-standing issuer that has never set a flag and never will. Those pull opposite ways, and **the
+lenient end is the one that binds**, because the factor is a minimum over the pool's tokens: any
+pool holding a freeze-capable asset is scored by the `40` and the `70` never enters the number at
+all. So the net lean of this constant is toward **reading generously** — the opposite of the
+role-combination rule two entries above, which understates safety and never overstates it, and the
+same direction as the weights' possible under-weighting of issuer control. **Those two
+compound**, and on exactly one shape of pool: one whose only weakness is a freeze-capable issuer is
+graded by the lenient tier _and_ has that tier's factor weighted at the lighter of the two. That
+pool is where a published `dex` number is most likely to be too high, and it is the first thing to
+challenge if one looks generous.
+
+Moving the two values together makes the factor a pass/fail on clawback alone; moving them apart
+makes it nearly binary on any flag at all.
+
+**Adopted from lending rather than chosen here, and labelled there:** the per-account tier values
+(`90` for an N-of-M multisig, `40` for a single master key) and the activity penalty (`−3` per
+operation, capped at `−30`), from
+[lending §3](lending.md#3-adminkeysafety--admin-signer-structure--activity-weight-020). They are the
+same integers applied to the same Horizon reading, and that section carries their label, their
+reasoning and their direction of error. They are named here so a reviewer counting this rulebook's
+constants finds them, and they are **not re-argued here**, because a second argument for the same
+integers is how two rulebooks start. Changing them on one side and not the other is a decision to
+fork them and needs its own argument — it is not an edit to one file.
+
+**Four rows, where #102's issue body predicted two — and the growth is stated rather than smoothed
+over,** because TAXONOMY.md's rule is that a long type-(b) list is itself the finding. This one is
+not long, and both additions are accounted for: that prediction was written when this rulebook had
+**no formulas at all**, only anchors, and the two new rows are precisely the two places a formula had
+to say something the chain does not state — how seven separately-read roles become one number, and
+what a scheduled code change does to it. Neither is a preference standing in for a measurement, and
+neither introduces an integer published nowhere else. On the other side the list **shrank**: #102
+also predicted rows for `depthSafety`'s probe size, its impact-to-score mapping, and the size floor,
+and all three are gone because the factor and the floor are gone with them.
+
+> **Three of the four are labelled in the code by #103, not by this change.** The weights live in
+> `CATEGORY_FACTORS.dex` and carry their label there today. The other three are constants in the
+> adapter's scoring code, which does not exist yet — Gate 1's "in **both** the code and
+> `methodology/`" is discharged for them when `adapters/aquarius/score.ts` lands, and **#103 may not
+> land without them**. Recorded here so the obligation is attached to the rulebook rather than
+> remembered.
+
+---
 
 ### Live ungraded state — route (c), published beside the score, never in it
 
@@ -667,8 +1025,9 @@ This is enforced, not merely stated:
   both counters start at 1 and the integer alone does not identify a rulebook.
 
 **Sharing the `adminKeySafety` key between the two categories changes none of this.** The key names
-the question; it does not claim the answers were computed the same way. See
-[factor 2](#1-adminkeysafety--seven-roles-and-how-long-you-get-to-react-to-a-code-change).
+the question; it does not claim the answers were computed the same way — and the formulas above are
+the proof: lending grades one admin account's signer set, this grades seven roles' worst posture
+under a pending-upgrade ceiling. See [factor 1](#1-adminkeysafety--seven-roles-and-how-long-you-get-to-react-to-a-code-change-weight-055).
 
 ### One adapter, many markets
 

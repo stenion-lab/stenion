@@ -72,9 +72,10 @@ export {
  */
 function notScorable(method: string): Error {
   return new Error(
-    `AquariusAdapter.${method} is not implemented: the dex rulebook publishes no weight table ` +
-      'yet (methodology/dex.md, "Factor weights"), so nothing can be scored under it. This ' +
-      'adapter reads the chain and stops there by design — see issue #101. Scoring is #103.',
+    `AquariusAdapter.${method} is not implemented: this adapter's scoring half has not been ` +
+      'written. The dex rulebook is complete — two factors, their formulas and a weight table ' +
+      '(methodology/dex.md) — and what is missing is score.ts, which is issue #103. This ' +
+      'adapter reads the chain and stops there by design; see issue #101.',
   );
 }
 
@@ -128,8 +129,9 @@ export class AquariusAdapter implements Adapter<AquariusRawData, 'dex'> {
 
   /**
    * Not implemented — see the file header. Throws rather than returning a
-   * partial or placeholder factor map: `dex` has no weight table, so there is
-   * no honest number to put in one.
+   * partial or placeholder factor map: the two factors' formulas are published
+   * (`methodology/dex.md`) and nothing here computes them yet, so there is no
+   * honest number to put in one.
    */
   async computeRiskFactors(_raw: AquariusRawData): Promise<RiskFactorMap> {
     throw notScorable('computeRiskFactors');

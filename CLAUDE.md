@@ -159,8 +159,9 @@ These override any default behavior and are enforced in code and review:
   set, then the weight table), and a placeholder weight is indistinguishable from a reviewed one the
   moment anyone reads it. `weights.test.ts` asserts the absence at runtime and `scoring.test.ts`
   asserts such a category publishes **no** weight table in `methodology/`, so the two cannot drift
-  into agreeing on a number nobody reviewed. It is a state to leave, not to live in — `dex` is in it
-  today (#100 → #102).
+  into agreeing on a number nobody reviewed. It is a state to leave, not to live in — `dex` passed
+  through it (#100 → #102) and **no category is in it today**; it is kept for the next one admitted
+  the same way.
 - **An adapter is a FOLDER of four files, and only `index.ts` is API.** `adapters/<protocol>/`
   holds `types.ts` (mainnet wiring, constants, raw on-chain shape, options), `fetch.ts` (everything
   touching RPC/Horizon, plus decoders, behind one `fetch*` entry point), `score.ts` (the five

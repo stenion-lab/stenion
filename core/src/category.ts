@@ -35,12 +35,13 @@
  * surfaced `METHODOLOGY_VERSIONS`, `CATEGORY_FACTORS` and `CATEGORY_OPERATIONS`
  * as the three places it had to be declared, which is the design working.
  *
- * `dex` IS REGISTERED BUT NOT YET SCORABLE, and the type system says so rather
- * than a comment: its factor set is declared `status: 'pendingWeights'` in
- * `weights.ts`, which is a different type from a published one and carries no
- * `weight` on any factor. No adapter claims the category, nothing is registered
- * to a target list, and no `dex` row can reach `risk_scores`. See #102 for the
- * weight table that closes it.
+ * `dex` IS REGISTERED AND WEIGHTED, AND STILL SCORES NOTHING. Its factor set was
+ * admitted in #100 with `status: 'pendingWeights'` — a different type from a
+ * published one, carrying no `weight` on any factor — and #102 reviewed the
+ * weight table and flipped it to `status: 'published'`. What stops a `dex` row
+ * reaching `risk_scores` today is no longer the type system but the plain
+ * absence of the rest: the adapter's scoring half is #103 and no market is
+ * registered to a target list until #104.
  */
 export const PROTOCOL_CATEGORIES = ['lending', 'dex'] as const;
 export type ProtocolCategory = (typeof PROTOCOL_CATEGORIES)[number];
@@ -82,10 +83,12 @@ export type ProtocolCategory = (typeof PROTOCOL_CATEGORIES)[number];
  *     at 1 rather than continuing lending's count for the same reason: a
  *     category's first published rulebook is its version 1, always.
  *
- *     It is a version for a rulebook nothing has yet been scored under. `dex`'s
- *     weight table is deliberately absent until #102, so no run can be stamped
- *     with this number yet; it is declared now because TAXONOMY.md Gate 7
- *     requires a category to arrive at 1 rather than acquire a version later.
+ *     It is a version for a rulebook nothing has yet been scored under, and it
+ *     stayed at 1 when #102 published the weight table: a rulebook that could
+ *     not compute a score cannot have produced one that a weight made
+ *     non-comparable, so there was no discontinuity to label. It is declared at
+ *     all because TAXONOMY.md Gate 7 requires a category to arrive at 1 rather
+ *     than acquire a version later. The next change to either weight is a 2.
  *
  * SPLITTING THE SCALAR INTO THIS MAP BUMPED NOTHING. No formula, threshold or
  * weight changed, so lending's stored history stays comparable straight across

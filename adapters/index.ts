@@ -4,7 +4,8 @@
 // it are internal wiring.
 //
 // `aquarius/` is the first `dex` adapter and it FETCHES ONLY — its scoring
-// methods throw, because the dex rulebook publishes no weight table yet. It is
+// methods throw, because its score.ts has not been written (#103). The rulebook
+// they would implement is complete and published (methodology/dex.md). It is
 // exported so the fixture-capture script can reach it; nothing registers it as
 // an indexer target. See adapters/aquarius/index.ts and issue #101.
 export * from './blend/index.ts';

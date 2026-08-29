@@ -26,7 +26,7 @@ import { describe, it } from 'node:test';
 // So the factor keys are written as string literals below, and a test asserts
 // those literals still match the enum — see "taxonomy names".
 import type { ProtocolCategory } from './category.ts';
-import type { RiskFactor, RiskFactorMap } from './types.ts';
+import type { FactorMap, RiskFactor, RiskFactorMap } from './types.ts';
 // A VALUE import: the weight declarations are the thing the doc's table is
 // pinned against, so they have to be readable at runtime, not just at compile
 // time. `weights.ts` is a leaf under the strip-only loader — its only import is
@@ -188,6 +188,33 @@ const factor = (value: number, weight: number): RiskFactor => ({
   detail: 'synthetic test factor',
 });
 
+/**
+ * The categories whose weight table has been reviewed, i.e. the ones a weight
+ * table and a worked example are required of.
+ *
+ * The assertions below iterate this rather than naming `lending`, because every
+ * one of them is a statement about *a category's* rulebook and nothing in any of
+ * them is lending-specific. Naming one category was correct while one was
+ * published; it stopped being correct in #102, when `dex` gained a table that
+ * would otherwise have been pinned against nothing.
+ */
+const publishedCategories = () =>
+  PROTOCOL_CATEGORIES.filter((c) => CATEGORY_FACTORS[c].status === 'published');
+
+/**
+ * A factor map of whatever arity the worked example has, from (value, weight)
+ * pairs.
+ *
+ * Deliberately NOT `factorMap` below, which insists on lending's five keys —
+ * `dex` has two, and `scoreFactors` is generic over `FactorMap` precisely so a
+ * category's arity is data rather than a second implementation of the mean. The
+ * keys are positional because a worked example's line does not label its terms
+ * and the weighted mean does not care which key holds which value.
+ */
+function syntheticMap(pairs: [number, number][]): FactorMap {
+  return Object.fromEntries(pairs.map(([v, w], i) => [`f${i}Safety`, factor(v, w)]));
+}
+
 /** A full five-key map from entries in FACTOR_KEYS order; `null` means "doesn't apply". */
 function factorMap(entries: (RiskFactor | null)[]): RiskFactorMap {
   assert.equal(entries.length, FACTOR_KEYS.length, 'factorMap needs one entry per factor');
@@ -196,88 +223,114 @@ function factorMap(entries: (RiskFactor | null)[]): RiskFactorMap {
 
 // ---------------------------------------------------------------------------
 
-describe("scoreFactors — agreement with METHODOLOGY.md's lending section", () => {
+describe("scoreFactors — agreement with each published category's rulebook", () => {
   // Every assertion in here names the category it is about. `scoreFactors`
   // itself is category-agnostic — it is a weighted mean and does not know which
   // rulebook produced the weights — but a worked example and a weight table are
   // a *category's*, so reading them without saying whose would be reading the
   // wrong rulebook the moment a second one is published.
-  it("reproduces the doc's worked example exactly", () => {
-    const { pairs, stated, rounded } = docWorkedExample('lending');
+  //
+  // THEY ITERATE THE PUBLISHED CATEGORIES RATHER THAN NAMING `lending`. Nothing
+  // in any of them was ever lending-specific; naming one category was simply
+  // correct while one had a weight table. `dex` gained one in #102, and a table
+  // nobody pins against `CATEGORY_FACTORS` is exactly the drift these tests
+  // exist to catch — so the loop is what stops the next category being published
+  // in the document and never checked against the code.
+  it("reproduces each doc's worked example exactly", () => {
+    for (const category of publishedCategories()) {
+      const { pairs, stated, rounded } = docWorkedExample(category);
 
-    assert.equal(
-      pairs.length,
-      FACTOR_KEYS.length,
-      'the worked example should have one term per factor',
-    );
+      assert.equal(
+        pairs.length,
+        Object.keys(CATEGORY_FACTORS[category].factors).length,
+        `${category}'s worked example should have one term per factor`,
+      );
 
-    // The mean is order-independent, so which key holds which value doesn't
-    // affect the result — the doc's line doesn't label them anyway.
-    const result = scoreFactors(factorMap(pairs.map(([v, w]) => factor(v, w))));
+      // The mean is order-independent, so which key holds which value doesn't
+      // affect the result — the doc's line doesn't label them anyway.
+      const result = scoreFactors(syntheticMap(pairs));
 
-    assert.equal(
-      result.score,
-      rounded,
-      `scoreFactors disagrees with METHODOLOGY.md's worked example ` +
-        `(doc says ${rounded}, code says ${result.score}). Code and the doc are not ` +
-        `allowed to drift — fix whichever is wrong, in the same change.`,
-    );
+      assert.equal(
+        result.score,
+        rounded,
+        `scoreFactors disagrees with methodology/${category}.md's worked example ` +
+          `(doc says ${rounded}, code says ${result.score}). Code and the doc are not ` +
+          `allowed to drift — fix whichever is wrong, in the same change.`,
+      );
 
-    // The doc writes the pre-rounding value as 53.1. In IEEE-754 the sum is
-    // actually 53.099999999999994, so this is checked with a tolerance rather
-    // than by equality — asserting the exact literal would fail for a reason
-    // that has nothing to do with the rulebook.
-    const exact = pairs.reduce((a, [v, w]) => a + v * w, 0);
-    const totalWeight = pairs.reduce((a, [, w]) => a + w, 0);
-    assert.ok(
-      Math.abs(exact / totalWeight - stated) < 0.005,
-      `doc states a pre-rounding value of ${stated}, computed ${exact / totalWeight}`,
-    );
+      // Lending's doc writes its pre-rounding value as 53.1. In IEEE-754 that
+      // sum is actually 53.099999999999994, so this is checked with a tolerance
+      // rather than by equality — asserting the exact literal would fail for a
+      // reason that has nothing to do with the rulebook.
+      const exact = pairs.reduce((a, [v, w]) => a + v * w, 0);
+      const totalWeight = pairs.reduce((a, [, w]) => a + w, 0);
+      assert.ok(
+        Math.abs(exact / totalWeight - stated) < 0.005,
+        `${category}'s doc states a pre-rounding value of ${stated}, ` +
+          `computed ${exact / totalWeight}`,
+      );
+    }
   });
 
-  it("the doc's weight table sums to 1.00 and matches the worked example's weights", () => {
-    const table = docWeightTable('lending');
-    assert.equal(table.length, FACTOR_KEYS.length, 'expected five weighted factors');
+  it("each doc's weight table sums to 1.00 and matches its worked example's weights", () => {
+    for (const category of publishedCategories()) {
+      const table = docWeightTable(category);
+      assert.equal(
+        table.length,
+        Object.keys(CATEGORY_FACTORS[category].factors).length,
+        `${category} publishes a different number of weighted factors than it declares`,
+      );
 
-    const sum = table.reduce((a, r) => a + r.weight, 0);
-    assert.ok(Math.abs(sum - 1) < 1e-9, `factor weights should sum to 1.00, got ${sum}`);
+      const sum = table.reduce((a, r) => a + r.weight, 0);
+      assert.ok(
+        Math.abs(sum - 1) < 1e-9,
+        `${category}'s factor weights should sum to 1.00, got ${sum}`,
+      );
 
-    // The doc states its weights twice — once in the table, once inline in the
-    // worked example. They must agree with each other, or the doc contradicts
-    // itself regardless of what the code does.
-    const fromTable = table.map((r) => r.weight).sort();
-    const fromExample = docWorkedExample('lending')
-      .pairs.map(([, w]) => w)
-      .sort();
-    assert.deepEqual(
-      fromExample,
-      fromTable,
-      "the worked example's weights differ from the table's",
-    );
+      // A doc states its weights twice — once in the table, once inline in the
+      // worked example. They must agree with each other, or the doc contradicts
+      // itself regardless of what the code does.
+      const fromTable = table.map((r) => r.weight).sort();
+      const fromExample = docWorkedExample(category)
+        .pairs.map(([, w]) => w)
+        .sort();
+      assert.deepEqual(
+        fromExample,
+        fromTable,
+        `${category}'s worked example weights differ from its table's`,
+      );
+    }
   });
 
-  it("the published table is exactly what CATEGORY_FACTORS declares — the adapters' source", () => {
-    // THE LINK THAT MAKES THE CHAIN A CHAIN. Both adapters read their weights
-    // from `CATEGORY_FACTORS.lending`, and neither contains a weight literal
-    // any more; their suites assert they carry what it declares. This asserts
-    // the other end — that what it declares is what METHODOLOGY.md publishes.
-    // Without it, the two adapters could agree perfectly with each other and
-    // both disagree with the rulebook, which is worse than the drift the move
-    // into core was meant to fix, not better: it would look consistent.
+  it("each published table is exactly what CATEGORY_FACTORS declares — the adapters' source", () => {
+    // THE LINK THAT MAKES THE CHAIN A CHAIN. Adapters read their weights from
+    // `CATEGORY_FACTORS.<category>`, and none contains a weight literal; their
+    // suites assert they carry what it declares. This asserts the other end —
+    // that what it declares is what `methodology/` publishes. Without it, two
+    // adapters could agree perfectly with each other and both disagree with the
+    // rulebook, which is worse than the drift the move into core was meant to
+    // fix, not better: it would look consistent.
     //
     // The doc is parsed, never restated, so a weight edited in either place
     // alone fails here.
-    const fromDoc = Object.fromEntries(docWeightTable('lending').map((r) => [r.factor, r.weight]));
-    const declared = Object.fromEntries(
-      Object.entries(CATEGORY_FACTORS.lending.factors).map(([k, f]) => [k, f.weight]),
-    );
+    for (const category of publishedCategories()) {
+      const declaration = CATEGORY_FACTORS[category];
+      // Narrowing for the compiler; `publishedCategories()` already filtered.
+      if (declaration.status !== 'published') continue;
 
-    assert.deepEqual(
-      declared,
-      fromDoc,
-      'CATEGORY_FACTORS.lending and METHODOLOGY.md’s "Factor weights" table disagree. ' +
-        'Code and the doc are not allowed to drift — fix whichever is wrong, in the same change.',
-    );
+      const fromDoc = Object.fromEntries(docWeightTable(category).map((r) => [r.factor, r.weight]));
+      const declared = Object.fromEntries(
+        Object.entries(declaration.factors).map(([k, f]) => [k, f.weight]),
+      );
+
+      assert.deepEqual(
+        declared,
+        fromDoc,
+        `CATEGORY_FACTORS.${category} and methodology/${category}.md’s "Factor weights" ` +
+          'table disagree. Code and the doc are not allowed to drift — fix whichever is ' +
+          'wrong, in the same change.',
+      );
+    }
   });
 
   it('publishes a rulebook section for every category that exists', () => {
@@ -290,13 +343,14 @@ describe("scoreFactors — agreement with METHODOLOGY.md's lending section", () 
     // THE WEIGHT TABLE AND WORKED EXAMPLE ARE REQUIRED OF A `published`
     // CATEGORY, NOT OF EVERY ONE. A worked example is an arithmetic
     // demonstration of the weight table, so a category whose weights are
-    // deliberately not yet reviewed (`status: 'pendingWeights'` — `dex`, whose
-    // weights are #102) has nothing it could honestly show: any table it
-    // published would be numbers invented to satisfy a parser, which is the
-    // opposite of what parsing the document is for. The `## <Label>` section
-    // itself is still required of it, because the factor set, the anchors and
-    // the rejected alternatives are exactly what such a category HAS been
-    // reviewed on.
+    // deliberately not yet reviewed (`status: 'pendingWeights'`) has nothing it
+    // could honestly show: any table it published would be numbers invented to
+    // satisfy a parser, which is the opposite of what parsing the document is
+    // for. The `## <Label>` section itself is still required of it, because the
+    // factor set, the anchors and the rejected alternatives are exactly what
+    // such a category HAS been reviewed on. Both categories are `published`
+    // today — `dex` was weighted in #102 — so the skip below currently skips
+    // nothing.
     for (const category of PROTOCOL_CATEGORIES) {
       const section = docCategorySection(category);
       assert.ok(section.trim().length > 0, `${category}'s section in METHODOLOGY.md is empty`);
@@ -318,6 +372,10 @@ describe("scoreFactors — agreement with METHODOLOGY.md's lending section", () 
     // loudest possible place. Either the numbers are real, in which case the
     // status flips and the table is pinned against `CATEGORY_FACTORS` by the
     // assertion above, or there are no numbers to print.
+    //
+    // It iterates nothing today, for the same reason the skip above skips
+    // nothing, and is kept for the next category admitted in TAXONOMY.md's two
+    // steps rather than deleted the moment `dex` left the state.
     for (const category of PROTOCOL_CATEGORIES) {
       if (CATEGORY_FACTORS[category].status === 'published') continue;
       assert.equal(
