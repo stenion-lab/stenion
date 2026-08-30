@@ -488,10 +488,26 @@ Then, iterating on your adapter:
 
    Two consequences worth knowing when you write `fetch.ts`. A Horizon `429` is a **resolved
    response**, not a throw, so any status check you write runs after the retries have already
-   happened — you will see the eventual answer, not the refusal. And if your adapter captures a
-   Horizon failure as a scoring reading rather than throwing (as Aquarius does for role and issuer
-   reads), an exhausted rate limit arrives there as that reading's `reason`, carrying the 429 text
-   — check that this is what you want for the factor it feeds.
+   happened — you will see the eventual answer, not the refusal. And if your adapter **captures a
+   failed read as a scoring reading rather than throwing** — as Aquarius does for role and issuer
+   reads, and as any category whose rulebook has cannot-assess branches will — classify it through
+   [`adapters/read-failure.ts`](adapters/read-failure.ts) rather than capturing every failure you
+   catch.
+
+   **The rule that module applies: a failure is a reading only when the subject answered.** Horizon
+   answers about a subject with an HTTP status, so a `4xx` is a reading and a **throw never is**; a
+   `429` or a `5xx` is Horizon reporting its own condition. Soroban RPC answers with a simulation
+   error, so `readContract`-style code mints a `SubjectAnswerError` and `readingOrRethrow` captures
+   only that. Everything else — an exhausted rate limit, a dropped connection, a body that did not
+   parse — throws, and the indexer records a failed run with the previous score standing and its
+   staleness advancing. Use `throwIfEndpointStatus(subject, status)` at each non-ok status check and
+   `rethrowAsEndpointFailure(subject, error)` in each `catch`.
+
+   Why it matters more than it looks: the rate-limit budget is **per attempt** and shared by every
+   call in it, so one exhaustion silences the reads after it and can take a protocol's whole score
+   to 0 on a cycle when nothing about the protocol changed. A published number must never be a
+   function of Stenion's own read path. The argument is recorded in
+   [`methodology/dex.md`](methodology/dex.md) § "A rate limit is not a reading".
 
 2. Register it in the indexer's `buildTargets()` ([`indexer/src/index.ts`](indexer/src/index.ts))
    via the existing `toTarget<T>()` wrapper — that's what lets your adapter's `TRawData` coexist in

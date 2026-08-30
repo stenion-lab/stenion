@@ -33,24 +33,24 @@ category, and the changelog behind each lives in that category's own section:
 | Category  | Current version | Scored today | Rulebook and changelog        |
 | --------- | --------------- | ------------ | ----------------------------- |
 | `lending` | 1               | yes          | [Lending](lending.md#lending) |
-| `dex`     | 1               | **no**       | [Dex](dex.md#dex)             |
+| `dex`     | 1               | yes          | [Dex](dex.md#dex)             |
 
 **The two `1`s are not the same 1.** Counters are independent and each starts at 1, so `dex` v1 and
 `lending` v1 are two different rulebooks rather than two editions of one, and neither is older than
 the other. The category and the number together identify a rulebook; the number alone does not.
 
-**Dex, methodology v1 — complete, not yet in use.** The two-factor AMM rulebook in
+**Dex, methodology v1 — complete, and in use since 2026-08-29.** The two-factor AMM rulebook in
 [Dex](dex.md#dex) — `adminKeySafety` weighted 0.55 and `assetControlSafety` weighted 0.45, each with
-its formula, its thresholds and its worked example. **Nothing is scored under it and no run has been
-stamped with it:** there is no scoring code and no registered market yet. The factor set was admitted
-first and the weight table reviewed separately, because a weight can only ever be an unvalidated
-judgment call and arguing one alongside the factor set would have buried it; both are version 1,
-since no score was ever published under the factor set alone. A third factor, `depthSafety`, was
+its formula, its thresholds and its worked example. **One market is scored under it** —
+`aquarius-xlm-usdc`, read by `adapters/aquarius/` — and every stored `dex` row carries version 1.
+The factor set was admitted first and the weight table reviewed separately, because a weight can
+only ever be an unvalidated judgment call and arguing one alongside the factor set would have buried
+it; both are version 1, since no score was ever published under the factor set alone. A third factor, `depthSafety`, was
 proposed and **deferred**: Aquarius publishes no unit of value to denominate a trade size in, and
 every way of inventing one is either a fabricated anchor or a permanent choice made on one
 protocol's data. **No size floor exists and none is pending** — neither surviving factor is
-size-sensitive. It is published ahead of the code because
-[`../TAXONOMY.md`](../TAXONOMY.md) requires a category's rulebook to be reviewable _before_ an
+size-sensitive. It was published **ahead of** the adapter, which is the order
+[`../TAXONOMY.md`](../TAXONOMY.md) requires: a category's rulebook must be reviewable _before_ an
 adapter is written against it.
 
 **Lending, methodology v1** — the rulebook described in the [Lending](lending.md#lending) section, in full,

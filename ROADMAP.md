@@ -598,6 +598,19 @@ adds a market**, so it is first in fact and not only in presentation.
     asserted rather than assumed. So a new taxonomy lands as a rulebook plus an adapter; it does
     not also arrive as a ranking bug.
 
+- **Per-sub-reading carry-forward across cycles — raised and deferred, `2026-08-30`.** When a read
+  fails for a reason that is about Stenion rather than about the protocol (an exhausted `429`, a
+  dropped connection), the cycle now records a **failed run** and the previous score stands with its
+  staleness advancing — see [`methodology/dex.md`](methodology/dex.md) § "A rate limit is not a
+  reading". The alternative considered was to keep scoring the protocol and carry forward only the
+  sub-reading that failed. It was **not** taken, and the reason is a real design question rather
+  than effort: `risk_scores` stores outputs only, never the raw inputs a run was computed from, so
+  there is nothing to carry forward without a new persistence layer for per-sub-value state — and a
+  score assembled from two cycles' readings would be a fourth way to publish a fact, beside the
+  three [`methodology/publishing-rules.md`](methodology/publishing-rules.md) defines. Neither is
+  something to decide inside a bug fix. It stays open, and the current behaviour is honest in the
+  meantime: a failed run says we did not learn anything about that protocol on that cycle.
+
 ## Out of scope (for now)
 
 - **Multi-chain.** Stenion is deliberately Stellar/Soroban-only. The non-negotiable rule that

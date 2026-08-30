@@ -16,6 +16,15 @@
 // the reason attached, and nothing is swallowed into a generic "fetch failed".
 // The distinction is what stops a blip in our own network path publishing
 // "dangerous admin control" across every pool at once.
+//
+// WHICH SIDE OF THAT LINE A FAILURE FALLS ON IS NOT DECIDED HERE. It is decided
+// by `../read-failure.ts`, on one test — did the subject answer? Horizon's
+// answers about a subject arrive as HTTP statuses, so a 4xx is captured and a
+// throw never is; the RPC's arrive as simulation errors, so a `SubjectAnswerError`
+// is captured and nothing else is. A rate limit we could not wait out, a 5xx and
+// a dropped connection are all facts about Stenion's read path, and every one of
+// them fails the run. `methodology/dex.md` § "A rate limit is not a reading"
+// carries the argument.
 
 import {
   Account,
@@ -30,6 +39,12 @@ import { rpc } from '@stellar/stellar-sdk';
 
 import { contractInstanceKey, readLedgerEntries } from '../ledger-entries.ts';
 import { horizonFetch, rateLimitedServer } from '../rate-limit.ts';
+import {
+  SubjectAnswerError,
+  readingOrRethrow,
+  rethrowAsEndpointFailure,
+  throwIfEndpointStatus,
+} from '../read-failure.ts';
 import {
   AQUARIUS_POOL_TYPES,
   AQUARIUS_ROLES,
@@ -72,11 +87,21 @@ async function readContract(
     .build();
 
   const sim = await server.simulateTransaction(tx);
+  // BOTH of these are the CONTRACT answering, so both are minted as
+  // `SubjectAnswerError` — see ../read-failure.ts. A caller that is allowed to
+  // capture a revert as a reading (only `readRoles`, per methodology/dex.md) can
+  // then tell it apart from a rate limit or a dropped connection by the error's
+  // own type, rather than by parsing this message. Every other caller lets both
+  // propagate exactly as before.
   if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(`Aquarius: simulation of ${method} on ${contractId} failed: ${sim.error}`);
+    throw new SubjectAnswerError(
+      `Aquarius: simulation of ${method} on ${contractId} failed: ${sim.error}`,
+    );
   }
   const retval = sim.result?.retval;
-  if (!retval) throw new Error(`Aquarius: ${method} on ${contractId} returned no value`);
+  if (!retval) {
+    throw new SubjectAnswerError(`Aquarius: ${method} on ${contractId} returned no value`);
+  }
   return scValToNative(retval);
 }
 
@@ -266,8 +291,15 @@ export function decodeRoles(native: unknown): AquariusRolesRead {
   return { status: 'read', roles };
 }
 
-/** Read one privileged account's Horizon posture. */
-async function readRoleAccount(
+/**
+ * Read one privileged account's Horizon posture.
+ *
+ * Exported for `fetch.test.ts`, like `decodeRoles`: the branches that matter
+ * here are the ones live data cannot produce — a 404 on a role holder, a 5xx, a
+ * Horizon that refuses us for rate — and each is a rulebook decision about
+ * whether the result is a reading or a failed run.
+ */
+export async function readRoleAccount(
   horizonUrl: string,
   address: string,
 ): Promise<AquariusRoleRaw['accounts'][number]> {
@@ -276,9 +308,15 @@ async function readRoleAccount(
   if (address.startsWith('C')) return { status: 'contract', address };
 
   const windowDays = 30;
+  const subject = `Horizon /accounts/${address}`;
   try {
     const acctResp = await horizonFetch(`${horizonUrl}/accounts/${address}`);
     if (!acctResp.ok) {
+      // A 4xx is Horizon answering ABOUT THIS ACCOUNT — "not here" — which is
+      // the localized cannot-assess methodology/dex.md sends to 0. A 429 or a
+      // 5xx is Horizon reporting its own condition and throws instead; see
+      // ../read-failure.ts.
+      throwIfEndpointStatus(subject, acctResp.status);
       return {
         status: 'failed',
         address,
@@ -291,6 +329,7 @@ async function readRoleAccount(
       `${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`,
     );
     if (!opsResp.ok) {
+      throwIfEndpointStatus(`${subject}/operations`, opsResp.status);
       return { status: 'failed', address, reason: `Horizon ops fetch returned ${opsResp.status}` };
     }
     const opsBody = (await opsResp.json()) as HorizonOps;
@@ -312,11 +351,13 @@ async function readRoleAccount(
       },
     };
   } catch (error) {
-    return {
-      status: 'failed',
-      address,
-      reason: error instanceof Error ? error.message : String(error),
-    };
+    // NOTHING THAT THROWS OUT OF A HORIZON READ IS A READING ABOUT THIS ACCOUNT.
+    // Every answer Horizon has about it arrives as a status, handled above; a
+    // throw is a rate limit we could not wait out, a connection that never
+    // landed, or a body that was not Horizon's answer. Capturing one as `failed`
+    // would score this role 0 — and, because the rate-limit budget is per
+    // attempt, would take every later read in the same attempt with it.
+    rethrowAsEndpointFailure(subject, error);
   }
 }
 
@@ -331,14 +372,18 @@ async function readRoles(
   try {
     decoded = decodeRoles(await readContract(server, contractId, 'get_privileged_addrs'));
   } catch (error) {
-    // A revert here is a READING about the pool — "we could not read who
-    // controls this" — which methodology/dex.md sends to the unsafe end. It is
-    // not a run failure, so it is captured rather than rethrown.
+    // A REVERT here is a READING about the pool — "we could not read who
+    // controls this" — which methodology/dex.md sends to the unsafe end, so it is
+    // captured rather than rethrown. A rate limit or a dropped connection is not:
+    // `readingOrRethrow` returns text only for the `SubjectAnswerError` that
+    // `readContract` mints from the contract's own answer, and sends everything
+    // else up as a failed run.
     return {
       status: 'failed',
-      reason: `get_privileged_addrs() on ${contractId} failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      reason: `get_privileged_addrs() on ${contractId} failed: ${readingOrRethrow(
+        `get_privileged_addrs() on ${contractId}`,
+        error,
+      )}`,
     };
   }
   if (decoded.status === 'failed') return decoded;
@@ -384,14 +429,29 @@ export function parseAssetName(name: string): { code: string; issuer: string | n
   return { code, issuer };
 }
 
-/** Read an issuing account's flags from Horizon. */
-async function readIssuerFlags(horizonUrl: string, issuer: string): Promise<AquariusIssuerRead> {
+/**
+ * Read an issuing account's flags from Horizon.
+ *
+ * Exported for `fetch.test.ts`, for the same reason as `readRoleAccount`: this
+ * is where methodology/dex.md's "the read applies and did not happen" 0 is
+ * separated from a failed run, and no live issuer produces either branch.
+ */
+export async function readIssuerFlags(
+  horizonUrl: string,
+  issuer: string,
+): Promise<AquariusIssuerRead> {
+  const subject = `Horizon /accounts/${issuer}`;
   try {
     const resp = await horizonFetch(`${horizonUrl}/accounts/${issuer}`);
     if (!resp.ok) {
       // The token IS a SAC, so the read APPLIES and did not happen — the unsafe
       // end, never the wasm route-(a) disclosure. Conflating the two would
       // silently upgrade an unknown into an exemption.
+      //
+      // ONLY WHEN HORIZON ANSWERED ABOUT THIS ISSUER, i.e. a 4xx. A 429 or a 5xx
+      // is Horizon's own condition and fails the run instead — a score that moves
+      // with our request rate is not a reading of this issuer's flags.
+      throwIfEndpointStatus(subject, resp.status);
       return {
         status: 'failed',
         issuer,
@@ -410,11 +470,9 @@ async function readIssuerFlags(horizonUrl: string, issuer: string): Promise<Aqua
       },
     };
   } catch (error) {
-    return {
-      status: 'failed',
-      issuer,
-      reason: error instanceof Error ? error.message : String(error),
-    };
+    // Same rule as `readRoleAccount`: a throw out of Horizon is never an answer
+    // about this issuer, so it is a failed run and not a scored 0.
+    rethrowAsEndpointFailure(subject, error);
   }
 }
 

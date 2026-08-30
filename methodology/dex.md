@@ -63,18 +63,28 @@ changelog is `dex`'s.** `dex` v1 and `lending` v1 are not two editions of one ru
 not older than the other; they are two different rulebooks that each start counting at 1. The
 category is stored beside the integer because the integer alone does not identify a rulebook.
 
-| Version | Effective    | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **1**   | not yet live | The initial two-factor model as documented here — `adminKeySafety` (role posture and the upgrade reaction window) and `assetControlSafety` (issuer freeze and clawback) — weighted 0.55 / 0.45. `depthSafety` is deferred (question A, option 4) and no size floor is needed by either factor that ships. The factor set was admitted first and the weight table reviewed second; both are version **1**, because no score was ever published under the factor set alone. No run has been stamped with it; no score exists under it. |
+| Version | Effective  | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1**   | 2026-08-29 | The initial two-factor model as documented here — `adminKeySafety` (role posture and the upgrade reaction window) and `assetControlSafety` (issuer freeze and clawback) — weighted 0.55 / 0.45. `depthSafety` is deferred (question A, option 4) and no size floor is needed by either factor that ships. The factor set was admitted first and the weight table reviewed second; both are version **1**, because no score was ever published under the factor set alone. Live since `aquarius-xlm-usdc` was registered on 2026-08-29; every stored `dex` row carries it. |
 
-One row, and it describes a rulebook nothing has been scored under yet. That is deliberate: Gate 7
-requires a category to arrive at version 1 rather than acquire a version once it starts producing
-numbers, so the counter exists from the moment the rulebook is published. **The first stored `dex`
-row will carry version 1** — settling the weight table did not bump it, because there was no prior
-published number for a weight to make incomparable: a rulebook that could not compute a score cannot
-have produced one that a weight made non-comparable. From the first stored row onward the ordinary
-rule in [What bumps the version](index.md#what-bumps-the-version-going-forward) applies without
-exception, and the next change to either weight is a version 2.
+**Changed under v1, without a bump: `2026-08-30`, a rate limit is no longer a reading.** Aquarius
+was capturing a Horizon read that never reached an answer — an exhausted `429`, a dropped
+connection, a `5xx` — as a localized cannot-assess and scoring it **0**. It is now a failed run.
+Recorded here rather than as a version 2 because
+[What bumps the version](index.md#what-bumps-the-version-going-forward) says a fix that makes the
+implementation match the documented rule does not bump: the affected scores were wrong under this
+rulebook, not produced by a different one. No formula, tier or weight moved. Full reasoning in
+[A rate limit is not a reading](#a-rate-limit-is-not-a-reading).
+
+One row, and it describes the rulebook every stored `dex` score was produced under. It was published
+before any of them existed, which is deliberate: Gate 7 requires a category to arrive at version 1
+rather than acquire a version once it starts producing numbers, so the counter exists from the moment
+the rulebook is published. **The first stored `dex` row carried version 1** — settling the weight
+table did not bump it, because there was no prior published number for a weight to make incomparable:
+a rulebook that could not compute a score cannot have produced one that a weight made non-comparable.
+From that first stored row onward the ordinary rule in
+[What bumps the version](index.md#what-bumps-the-version-going-forward) applies without exception,
+and the next change to either weight is a version 2.
 
 History is **not backfilled across a bump, and cannot be**, here as everywhere: `risk_scores`
 stores only outputs, never the raw on-chain inputs a run was computed from.
@@ -569,11 +579,23 @@ cannot-assess branch and must not be graded 0, or a blip in our own network path
 "dangerous admin control" across every pool at once. Everything **localized** — one call, one role,
 one issuer — is a cannot-assess branch and takes the 0.
 
-| Factor               | Cannot-assess branch                                                                                                                               | Resolves to                                                              |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `adminKeySafety`     | `get_privileged_addrs()` reverts; returns fewer than the seven roles; a role is ungradable; the contract carries no `UpgradeDeadline` entry at all | **0**                                                                    |
-| `assetControlSafety` | A SAC issuer's Horizon lookup fails; no reserve token is readable at all                                                                           | **0**                                                                    |
-| _(disclosures)_      | Timelock duration; Emergency Admin bypass; the 9 non-SAC wasm tokens                                                                               | **Not a branch** — route-(a) `value: null`, moves the number neither way |
+**"Localized" is not a count of failed reads; it is a claim about what the failure is a statement
+about.** The two words that separate the branches are _the subject answered_. A read whose subject
+answered — an issuer account Horizon says is not there, a contract that reverted — produced a fact
+about the pool, and a fact about the pool is what a factor is for. A read that never reached an
+answer — the endpoint refused us for rate, the connection dropped, Horizon returned a `5xx` about
+itself — produced a fact about **Stenion's read path on that cycle**, and no such fact may move a
+protocol's number. Both used to be called "the lookup failed"; they are opposite claims, and the one
+that is not about the protocol fails the run. The argument, the options weighed against it, and what
+it does and does not change are in
+[A rate limit is not a reading](#a-rate-limit-is-not-a-reading) below.
+
+| Factor               | Cannot-assess branch                                                                                                                                   | Resolves to                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `adminKeySafety`     | `get_privileged_addrs()` **reverts**; returns fewer than the seven roles; a role is ungradable; the contract carries no `UpgradeDeadline` entry at all | **0**                                                                     |
+| `assetControlSafety` | Horizon **answers** about a SAC issuer and the answer is not a gradable account; no reserve token is readable at all                                   | **0**                                                                     |
+| _(either factor)_    | The endpoint never answered: a rate limit we could not wait out, a dropped connection, a `5xx`                                                         | **Not a branch** — a **failed run**, and no score published for the cycle |
+| _(disclosures)_      | Timelock duration; Emergency Admin bypass; the 9 non-SAC wasm tokens                                                                                   | **Not a branch** — route-(a) `value: null`, moves the number neither way  |
 
 **`adminKeySafety`.** Three ways the input can be incomplete, all resolving to **0**:
 
@@ -606,12 +628,15 @@ one issuer — is a cannot-assess branch and takes the 0.
 
 **`assetControlSafety`.** Two cases, and the distinction between them is the whole point:
 
-- **A SAC issuer's Horizon `/accounts/{issuer}` lookup fails** — the token _is_ a SAC, so its issuer
-  flags are exactly the thing this factor grades, and we could not read them. **0** for that token,
+- **Horizon answers about a SAC issuer's `/accounts/{issuer}` and the answer is not a gradable
+  account** — a `404`, most plainly. The token _is_ a SAC, so its issuer flags are exactly the thing
+  this factor grades, and Horizon has told us there is nothing there to grade. **0** for that token,
   which then binds the factor on the usual worst-reserve convention. This is **not** the same as the
   9 non-SAC tokens and must not be routed like them: there, the read genuinely does not apply; here,
   it applies and failed. Treating a failed read as "does not apply" would silently upgrade an
   unknown into an exemption, which is the single most dangerous confusion available in this factor.
+  It is equally **not** the same as a read that never reached an answer — see
+  [A rate limit is not a reading](#a-rate-limit-is-not-a-reading).
 - **No reserve token is readable at all** — every reserve is a wasm contract, so every token takes
   the route-(a) disclosure and nothing is left to grade. A minimum over an empty set is **0**, not 100. Same shape as lending's `2026-08-16` correction, written down before the adapter exists
   rather than after it publishes a 100.
@@ -620,12 +645,89 @@ The 9 non-SAC wasm tokens remain what they were: a route-(a) `value: null` discl
 token and saying the read does not apply. A disclosure is not a zero and not a pass — the token is
 excluded from the computation, not graded badly by it.
 
+#### A rate limit is not a reading
+
+**The question.** Aquarius is the first adapter that scores through a failed read instead of
+throwing on it, and the 429-backoff work made the consequence concrete: when Horizon refuses us for
+rate and the attempt's retry budget is spent, the refusal arrived at scoring as a **0 with a reason
+string**, indistinguishable at the factor level from "this issuer's flags could not be read." Those
+are different claims. One is about the pool. The other is about Stenion's infrastructure at the
+moment of the read, and it was moving a published number.
+
+**The decision: a rate-limit exhaustion, and every other failure that never reached an answer, is a
+failed run — not a scored 0.** Nothing about the two formulas, the tier values, the weights or the
+worst-reserve convention changes. What changes is which failures are allowed to reach them.
+
+**The rule, in the form the code applies it.** A read is a reading **only when its subject
+answered**, and each transport is asked that question in its own vocabulary:
+
+| Transport   | An answer about the subject — **captured, scores**                   | Everything else — **fails the run**                               |
+| ----------- | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Horizon     | an HTTP status that is about the account: `404`, and any other `4xx` | a `429`, any `5xx`, a rejected `fetch`, a body that did not parse |
+| Soroban RPC | a simulation error — the contract itself refusing                    | a rate limit, a dropped connection, an SDK decode failure         |
+
+The classification lives in [`../adapters/read-failure.ts`](../adapters/read-failure.ts), not in
+each call site, and it is tested there and in `adapters/aquarius/fetch.test.ts` against a loopback
+Horizon answering `404`, `503`, `429` and nothing at all.
+
+**Why, in three facts rather than a preference.**
+
+1. **A 429 carries no information about the protocol.** Every one of Aquarius's 340 pools is
+   equally rate-limitable, on a schedule set by our own request train against a free shared
+   endpoint. A number that moves with it is reporting Stenion's cycle, and the registry has no
+   column for that.
+2. **It is not localized, which is the word the boundary above turns on.** The retry budget is
+   **per attempt** and shared by every call the attempt makes ([`../core/src/rate-limit.ts`](../core/src/rate-limit.ts)):
+   once it is spent, the next refused read gets no retries at all. So one exhaustion silences the
+   reads after it, `adminKeySafety` and `assetControlSafety` both resolve to 0, and the pool
+   publishes an overall **0** — "dangerous admin control", from an endpoint that was busy. That is
+   precisely the outcome the whole-endpoint boundary exists to forbid, arriving one pool at a time
+   instead of all at once.
+3. **The honest publication already exists and costs nothing to reach.** A throw runs the
+   indexer's own target retry with a **fresh** budget, up to `STENION_RETRY_ATTEMPTS` times; only if
+   every attempt is refused does the cycle record a failed run, flagged `rateLimited` and carrying
+   the 429s in `risk_scores.error`. The previous score stands with its staleness advancing, which
+   says the true thing: we did not learn anything about this protocol this cycle.
+
+**The options that were weighed, and why each was not taken.**
+
+| Option                                                                                     | Why not                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Keep the scored 0.** Gate 2 resolves uncertainty to the unsafe end and does not ask why. | Gate 2 governs a cannot-assess branch, and a cannot-assess branch is a reading. The rule it appeals to is [ground rule 4](index.md) — never publish a number no data supports — and a 0 sourced from our own request rate is that number, not an application of it.                                                                          |
+| **Carry the prior cycle's sub-reading forward and retry next cycle.**                      | `risk_scores` stores outputs, never the raw inputs a run was computed from, so there is nothing to carry: this needs a new persistence layer for per-sub-value state, and a score assembled from two cycles' readings is a fourth publication route nobody has argued for. Flagged as a separate design question, not forced into this pass. |
+| **Keep the 0 and disclose it in `detail`, plus a dashboard treatment.**                    | It fixes the ambiguity for a reader who opens the factor and not for the ranking, which is where the damage is: the pool sits last in the `dex` block with a footnote. Disclosure is the right response to something we chose not to grade; this is something we never measured.                                                             |
+| **Throw on a 429 only, leaving the other never-answered failures scoring 0.**              | A dropped connection and a Horizon `5xx` are the same claim about the same thing and were scoring 0 too — "Horizon down" was publishing a risk finding, against the boundary this document already wrote. Fixing the named case and leaving its siblings would have made the rule a special case instead of a rule.                          |
+
+**What this deliberately does NOT do.** Aquarius still scores through every failure that is a
+statement about the pool: a reverting `get_privileged_addrs()`, a short role map, an ungradable
+role, an issuer account Horizon says is not there. The score-through-failure design is intact — it
+was never a design to score through _our own_ failures. Soroban RPC's 429 handling is unchanged;
+what changed is that Aquarius no longer swallows the `RateLimitExhaustedError` that handling
+produces. Lending needed none of this and is untouched: Blend and Kinetic throw on every failed
+read, so no fact about our read path could reach one of their numbers in the first place.
+
+**No version bump, deliberately.** Per
+[What bumps the version](index.md#what-bumps-the-version-going-forward), a fix that makes the
+implementation match the rule already documented here does not bump — the affected stored scores
+were wrong under this rulebook, not scored under a different one. No formula, threshold, weight or
+tier moves, and a `dex` score computed from readings is byte-identical before and after. What
+changes is that some cycles now publish no number where they previously published a wrong one, and
+`risk_scores.methodology_version` was never the field that distinguished those.
+
 **Every branch above is implemented and tested, and the adapter may not reinterpret it.**
 The rules were written before the code, which is the order [`../TAXONOMY.md`](../TAXONOMY.md)
 requires; `adapters/aquarius/score.test.ts` now asserts each one individually, including the four
 that no live pool can reach — a reverting `get_privileged_addrs()`, a short role map, a
 contract-held role, and a pool whose every reserve is a wasm contract. All of them return **0**,
 each with a `detail` naming what could not be assessed.
+
+**And so is the line above them.** `adapters/read-failure.ts` decides, once, which failures are
+allowed to become one of those branches at all; `adapters/read-failure.test.ts` pins the
+classification and `adapters/aquarius/fetch.test.ts` drives the two Horizon readers against a
+loopback endpoint answering `404` (captured as the reading), `503`, a refused connection and a
+persistent `429` (all three a failed run, the last still recognisable downstream as a rate limit).
+None of the four can be produced from live data on demand, which is why they are pinned rather than
+left to be discovered on the cycle they first happen.
 
 ### Size floor: none, and none pending
 

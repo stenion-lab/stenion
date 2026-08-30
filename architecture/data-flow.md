@@ -163,6 +163,19 @@ Retries are logged per occurrence at `warn` (`[rate-limit] 429 on … — retryi
 retry-success is still logged as a success — logging it as an error is how real failures stop being
 noticed.
 
+**An exhausted 429 fails the run — it never becomes a scored reading.** That is not automatic for
+an adapter that scores through failures. Aquarius captures a localized cannot-assess (one role, one
+issuer) as a reading that resolves to 0, per `methodology/dex.md`, and it used to capture the
+`RateLimitExhaustedError` the same way — so a refused Horizon read published as "this issuer could
+not be read", scored 0, and, because the budget is per attempt, took the reads after it down with
+it. `adapters/read-failure.ts` now draws the line once, on one test: **a failure is a reading only
+when the subject answered.** Horizon answers with a status, so a `4xx` is a reading and a throw
+never is; the RPC answers with a simulation error, minted as `SubjectAnswerError`. A rate limit, a
+dropped connection and a `5xx` all throw, and the cycle records a failed run with the previous score
+standing. The decision and the options weighed against it are in `methodology/dex.md` § "A rate
+limit is not a reading"; the `RateLimitExhaustedError` is rethrown untouched so `cycle.ts` can still
+flag `rateLimited: true`.
+
 **The policy is a code constant, not an env var**, deliberately. Its numbers are valid only in
 relation to `STENION_ATTEMPT_TIMEOUT_MS`; an env var that let the two be set independently would
 let someone configure a backoff that cannot fit, which converts honest 429s back into misleading
