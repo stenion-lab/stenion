@@ -15,9 +15,16 @@
 // Run with: pnpm --filter @stenion/adapters test
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { createServer, type Server } from 'node:http';
+import { after, describe, it } from 'node:test';
 
 import { xdr } from '@stellar/stellar-sdk';
+import {
+  DEFAULT_RATE_LIMIT_POLICY,
+  RateLimitBudget,
+  isRateLimitExhausted,
+  runWithRateLimitBudget,
+} from '@stenion/core';
 
 import {
   AQUARIUS_POOL_TYPES,
@@ -27,8 +34,11 @@ import {
   decodeRoles,
   instanceKeyName,
   parseAssetName,
+  readIssuerFlags,
+  readRoleAccount,
   unrecognisedPoolType,
 } from './index.ts';
+import { isEndpointUnavailable } from '../read-failure.ts';
 import { aquariusConcentratedMainnet } from '../fixtures/aquarius/concentrated-mainnet.ts';
 import { aquariusConstantProductMainnet } from '../fixtures/aquarius/constant-product-mainnet.ts';
 import { aquariusStableMainnet } from '../fixtures/aquarius/stable-mainnet.ts';
@@ -290,5 +300,109 @@ describe('the frozen fixtures — the decode bug, guarded at the data level', ()
   it('carries a three-token pool, so arity is exercised and not just asserted', () => {
     assert.equal(aquariusStableMainnet.tokens.length, 3);
     assert.equal(aquariusStableMainnet.reserves.length, 3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Horizon: which failures are a reading, and which are a failed run
+// ---------------------------------------------------------------------------
+
+const servers: Server[] = [];
+after(() => {
+  for (const server of servers) server.close();
+});
+
+/** A loopback Horizon answering every request with one status and body. */
+async function fakeHorizon(status: number, body = '{}') {
+  const server = createServer((_req, res) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(body);
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : 0;
+  return `http://127.0.0.1:${port}`;
+}
+
+const ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
+const ROLE_HOLDER = 'GDNRHGSWUCSOWPBFVFYWLTNVQLDCFXUXNRSCTLLQRMKQKAKPAJVYCJUB';
+
+/**
+ * A rate-limit budget with nothing left to spend, so the first 429 exhausts
+ * immediately. The real schedule is proven in ../rate-limit.test.ts; what these
+ * tests are about is what the ADAPTER does with the exhaustion when it arrives,
+ * and re-proving three sleeps here would only make them slower.
+ */
+function spentBudget() {
+  return new RateLimitBudget({ ...DEFAULT_RATE_LIMIT_POLICY, maxRetriesPerCall: 0 });
+}
+
+describe('a Horizon failure is a reading only when Horizon answered about the subject', () => {
+  it('captures a 404 on a SAC issuer as the unsafe-end reading, per methodology/dex.md', async () => {
+    // "The read applies and did not happen" — a localized cannot-assess that
+    // scores 0 for that token. This is the branch that must NOT become a failed
+    // run: an issuer account that is genuinely not there is a fact about the
+    // asset in the pool.
+    const url = await fakeHorizon(404);
+    const read = await readIssuerFlags(url, ISSUER);
+    assert.equal(read.status, 'failed');
+    assert.match(read.status === 'failed' ? read.reason : '', /returned 404/);
+  });
+
+  it('fails the run on a 5xx instead of scoring the issuer 0', async () => {
+    // Horizon reporting its own condition says exactly as much about this
+    // issuer's flags as a dropped connection does — which is nothing.
+    const url = await fakeHorizon(503);
+    await assert.rejects(() => readIssuerFlags(url, ISSUER), isEndpointUnavailable);
+  });
+
+  it('fails the run when the connection never lands', async () => {
+    // Port 1 on loopback: nothing is listening, so `fetch` rejects rather than
+    // resolving with a status. Before this rule that reject was captured as a
+    // scored 0 — "Horizon down" publishing a risk finding, which is the outcome
+    // methodology/dex.md's whole-endpoint boundary exists to forbid.
+    await assert.rejects(
+      () => readIssuerFlags('http://127.0.0.1:1', ISSUER),
+      isEndpointUnavailable,
+    );
+  });
+
+  it('fails the run — as a RATE LIMIT — when the endpoint refuses us for rate', async () => {
+    // The claim this whole rule turns on. A 429 that outlasted the attempt's
+    // backoff budget is a fact about Stenion's request rate against a free
+    // shared endpoint, not about who controls this pool; and it must stay
+    // recognisable as a rate limit downstream, because cycle.ts flags it.
+    const url = await fakeHorizon(429);
+    const error = await runWithRateLimitBudget(spentBudget(), () =>
+      readIssuerFlags(url, ISSUER),
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    assert.ok(isRateLimitExhausted(error), 'reaches the indexer as a rate limit, not as a 0');
+  });
+
+  it('applies the identical rule to a role holder, both statuses and throws', async () => {
+    // adminKeySafety and assetControlSafety read different subjects through the
+    // same transport, and a rule that held for one and not the other would let
+    // an infrastructure blip zero exactly one factor.
+    const missing = await fakeHorizon(404);
+    const captured = await readRoleAccount(missing, ROLE_HOLDER);
+    assert.equal(captured.status, 'failed');
+
+    const down = await fakeHorizon(500);
+    await assert.rejects(() => readRoleAccount(down, ROLE_HOLDER), isEndpointUnavailable);
+    await assert.rejects(
+      () => readRoleAccount('http://127.0.0.1:1', ROLE_HOLDER),
+      isEndpointUnavailable,
+    );
+  });
+
+  it('still reports a contract-held role without touching Horizon at all', async () => {
+    // The `C…` short-circuit precedes every network call, so it cannot be
+    // affected by any of the above — and it is a reading, not a failure.
+    const read = await readRoleAccount('http://127.0.0.1:1', 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    assert.deepEqual(read, { status: 'contract', address: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' });
   });
 });

@@ -26,7 +26,14 @@ export type {
   BlendRawData,
   BlendReserveRaw,
 } from './types.ts';
-export { ORACLE_GRADING_READS, isMissingContractFunction, oracleNotGradable } from './fetch.ts';
+export {
+  ORACLE_GRADING_READS,
+  decodeReserve,
+  isMissingContractFunction,
+  oracleNotGradable,
+  reserveConfigKey,
+  reserveDataKey,
+} from './fetch.ts';
 export type { OracleGradingRead, OracleGradingReads } from './fetch.ts';
 
 export class BlendAdapter implements Adapter<BlendRawData, 'lending'> {

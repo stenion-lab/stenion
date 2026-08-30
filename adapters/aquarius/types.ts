@@ -257,10 +257,13 @@ export interface AquariusIssuerFlagsRaw {
  * - `notApplicable` — the token is a wasm contract, not a SAC, so there is no
  *   issuer-flag equivalent to read. Route (a): a `value: null` disclosure. Nine
  *   of the 205 distinct pool tokens are these.
- * - `failed` — the token IS a SAC and the Horizon lookup for its issuer did not
- *   succeed. The read applies and did not happen, which `methodology/dex.md`
- *   sends to the unsafe end. Never routed as `notApplicable`; doing so would
- *   silently upgrade an unknown into an exemption.
+ * - `failed` — the token IS a SAC and Horizon **answered** about its issuer with
+ *   something that is not a gradable account. The read applies and did not
+ *   happen, which `methodology/dex.md` sends to the unsafe end. Never routed as
+ *   `notApplicable`; doing so would silently upgrade an unknown into an
+ *   exemption. And never used for a read that never reached an answer — a rate
+ *   limit, a dropped connection or a `5xx` fails the run, because a score must
+ *   not move with Stenion's own read path (see `../read-failure.ts`).
  *
  * `reason` is carried on `failed` so a run failure is attributable to a
  * specific read rather than a generic "fetch failed".
@@ -324,7 +327,13 @@ export interface AquariusRoleRaw {
    *   recorded honestly rather than fabricated. `methodology/dex.md` sends this
    *   to the unsafe end for `dex` rather than inheriting lending's neutral 60,
    *   and records why.
-   * - `failed` — the lookup did not succeed; attributable, with its reason.
+   * - `failed` — **Horizon answered about this account and the answer was not a
+   *   gradable one** (a `404`, most plainly); attributable, with its reason. It
+   *   is NOT the arm for a read that never reached an answer: a rate limit we
+   *   could not wait out, a dropped connection or a `5xx` fails the run instead,
+   *   because none of them is a fact about this account. See
+   *   `../read-failure.ts` and `methodology/dex.md` § "A rate limit is not a
+   *   reading".
    */
   accounts: (
     | { status: 'read'; address: string; account: AquariusRoleAccountRaw }

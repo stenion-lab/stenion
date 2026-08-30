@@ -61,6 +61,8 @@ export {
   instanceKeyName,
   fetchAquariusRawData,
   parseAssetName,
+  readIssuerFlags,
+  readRoleAccount,
   unrecognisedPoolType,
 } from './fetch.ts';
 export { aquariusOperationalState, computeAquariusRiskFactors } from './score.ts';

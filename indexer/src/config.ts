@@ -220,6 +220,14 @@ export function loadConfig(cwd: string = process.cwd()): IndexerConfig {
     // YieldBlox, which exceeds this cap — a local `pnpm indexer` may now time out
     // and retry where it used to succeed first time. Raise it in .env if that
     // bites; production is the case this default is sized for.
+    //
+    // THE RATE-LIMIT BACKOFF LIVES INSIDE THIS NUMBER, and is sized against it:
+    // `DEFAULT_RATE_LIMIT_POLICY` (@stenion/core) lets one attempt spend at most
+    // 2,000ms waiting out 429s, which fits the 3,637ms of headroom the slowest
+    // healthy deployed attempt leaves inside 10s. Lowering this value without
+    // revisiting that policy would eat the margin that keeps a persistent 429
+    // failing AS a 429 rather than as an attempt timeout — see
+    // architecture/data-flow.md "Rate limiting".
     attemptTimeoutMs: optionalPositiveInt('STENION_ATTEMPT_TIMEOUT_MS', 10_000),
     // 50s, raised from 42s to fit the first dex target — AGAINST OBSERVED
     // DEPLOYED DURATIONS, which

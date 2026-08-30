@@ -28,7 +28,13 @@ import {
   type IndexTarget,
 } from './cycle.ts';
 import type { StreakAlert } from './alerts.ts';
-import { OperationalLevel } from '@stenion/core';
+import {
+  DEFAULT_RATE_LIMIT_POLICY,
+  OperationalLevel,
+  RateLimitBudget,
+  RateLimitExhaustedError,
+  currentRateLimitBudget,
+} from '@stenion/core';
 import type {
   Adapter,
   OperationalState,
@@ -1466,5 +1472,255 @@ describe('runCycle — alerting can never break a cycle', () => {
 
     await runCycle([throwingTarget('blend')], store, alerting({ notifier }));
     assert.deepEqual(all(), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rate limiting: three outcomes, told apart
+// ---------------------------------------------------------------------------
+
+// A 429 from the shared public RPC is not a fact about the protocol being
+// scored. Treating it identically to a changed contract interface is what
+// erodes what an alert means, so the run loop has to distinguish three things:
+// a clean success, a success that had to wait out rate limiting, and a failure
+// caused by rate limiting that never let up. These tests pin all three, and pin
+// that the middle one does NOT reach the alert path.
+describe('runCycle separates rate-limit outcomes from real ones', () => {
+  /** A target that waits out `retries` rate-limit responses, then succeeds. */
+  function rateLimitedThenOkTarget(id: string, retries: number): IndexTarget {
+    return {
+      metadata: { id, name: id, chain: 'stellar', category: 'lending', adapterRef: 'FakeAdapter' },
+      run: async () => {
+        // Exactly what the transport wrapper does on a retried 429 — the budget
+        // is ambient, so this needs no argument, which is the property that let
+        // the adapters gain retries without an interface change.
+        const budget = currentRateLimitBudget();
+        assert.ok(budget, 'the run loop must establish a budget for every attempt');
+        for (let i = 0; i < retries; i++) budget.recordRetry(250, 'getLedgerEntries');
+        return {
+          safetyScore: 61,
+          factors: FACTORS,
+          operationalState: OPERATIONAL_STATE,
+          computedAt: COMPUTED_AT,
+        };
+      },
+    };
+  }
+
+  /** The error a persistently-429ing endpoint produces once the budget is spent. */
+  function exhausted(): RateLimitExhaustedError {
+    const budget = new RateLimitBudget(DEFAULT_RATE_LIMIT_POLICY);
+    budget.recordRetry(250, 'x');
+    budget.recordRetry(500, 'x');
+    budget.recordRetry(1000, 'x');
+    return new RateLimitExhaustedError('getLedgerEntries (9 keys)', budget, 'callRetriesExhausted');
+  }
+
+  it('reports a clean success with no rate-limit fields at all', async () => {
+    const { store, written } = fakeStore();
+    const summary = await runCycle([okTarget('blend')], store);
+
+    assert.equal(summary.results[0].status, 'ok');
+    assert.equal(summary.results[0].rateLimitRetries, undefined);
+    assert.equal(summary.results[0].rateLimited, undefined);
+    assert.equal(written[0].status, 'ok');
+  });
+
+  it('reports a retry-success as ok, with the retries counted', async () => {
+    const { store, written } = fakeStore();
+    const summary = await runCycle([rateLimitedThenOkTarget('kinetic', 2)], store);
+
+    const result = summary.results[0];
+    assert.equal(result.status, 'ok', 'waiting out a 429 is not a failure');
+    assert.equal(result.safetyScore, 61);
+    assert.equal(result.rateLimitRetries, 2, 'the count is what makes this outcome visible');
+    assert.equal(result.rateLimited, undefined, 'that flag is for failures only');
+    assert.equal(summary.ok, 1);
+    assert.equal(summary.failed, 0);
+    // The persisted row is an ordinary ok run — retries are an operational fact
+    // about our path to the RPC, never a fact about the protocol's score.
+    assert.equal(written[0].status, 'ok');
+  });
+
+  it('logs a retry-success as a success, not as an error', async () => {
+    const { store } = fakeStore();
+    await runCycle([rateLimitedThenOkTarget('kinetic', 3)], store);
+
+    const line = logs.find((l) => l.includes('kinetic') && l.includes('safetyScore=61'));
+    assert.ok(line, 'the success line must still be logged');
+    assert.match(line, /waited out 3 rate-limit response/);
+    assert.ok(
+      !logs.some((l) => l.includes('kinetic') && l.includes('FAILED')),
+      'a retry-success must never be logged as a failure',
+    );
+  });
+
+  it('reports a retry-exhausted failure as rate-limited, with the 429s named', async () => {
+    const { store, written } = fakeStore();
+    const summary = await runCycle([throwingTarget('blend', exhausted())], store);
+
+    const result = summary.results[0];
+    assert.equal(result.status, 'failed');
+    assert.equal(result.rateLimited, true, 'countable without parsing the message');
+    assert.match(result.error ?? '', /rate limited \(HTTP 429\)/);
+    assert.match(result.error ?? '', /getLedgerEntries \(9 keys\)/);
+    assert.match(result.error ?? '', /not the protocol being unreadable/);
+    // And it is the recorded error, so an alert body carries the same sentence.
+    const record = written[0];
+    assert.match(record.status === 'failed' ? record.error : '', /HTTP 429/);
+  });
+
+  it('does not flag failures that are not about rate limiting', async () => {
+    const { store } = fakeStore();
+    const summary = await runCycle(
+      [
+        throwingTarget('blend', new Error('attempt exceeded its 10000ms time budget')),
+        throwingTarget('kinetic', new Error('Blend: pool CAJJ has no Config in instance storage')),
+      ],
+      store,
+    );
+
+    for (const result of summary.results) {
+      assert.equal(result.status, 'failed');
+      assert.equal(
+        result.rateLimited,
+        undefined,
+        `${result.id}: a timeout and a decode break are not the endpoint refusing us`,
+      );
+    }
+  });
+
+  it('never sends a retry-success down the alert path', async () => {
+    // The streak alert reads `failed` rows only, so a retry-success cannot reach
+    // it — asserted rather than assumed, because "successful after retry" is
+    // precisely the outcome someone might later decide to alert on by accident.
+    const { notifier, all } = fakeNotifier();
+    // Four real prior failures, so the alert path is demonstrably live: a
+    // retry-success ends that streak and produces `recovered`. A test that
+    // seeded nothing would pass by having no alerting at all.
+    const { store } = fakeStore({ history: { blend: failedRuns(4) } });
+
+    await runCycle(
+      [rateLimitedThenOkTarget('blend', 4)],
+      store,
+      alerting({ notifier, alertThreshold: 4 }),
+    );
+
+    assert.deepEqual(
+      all().map((a) => a.kind),
+      ['recovered'],
+      'the only alert is that the earlier real failures ended, never one about the retries',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rate limiting composes with concurrency
+// ---------------------------------------------------------------------------
+
+describe('retries in one target do not touch another target', () => {
+  it('gives every target its own budget, with its own full allowance', async () => {
+    // STENION_CYCLE_CONCURRENCY is 1 today and under review. A module-level
+    // budget would work at 1 and silently cross-charge at 2, so the isolation is
+    // tested at 2 rather than at the shipped value.
+    const seen = new Map<string, RateLimitBudget>();
+
+    function observing(id: string, retries: number): IndexTarget {
+      return {
+        metadata: { id, name: id, chain: 'stellar', category: 'lending', adapterRef: 'Fake' },
+        run: async () => {
+          const budget = currentRateLimitBudget();
+          assert.ok(budget);
+          seen.set(id, budget);
+          for (let i = 0; i < retries; i++) {
+            // Yield between retries so the two targets genuinely interleave.
+            await new Promise((r) => setImmediate(r));
+            assert.equal(currentRateLimitBudget(), budget, `${id} saw a different budget`);
+            budget.recordRetry(250, 'call');
+          }
+          return {
+            safetyScore: 50,
+            factors: FACTORS,
+            operationalState: OPERATIONAL_STATE,
+            computedAt: COMPUTED_AT,
+          };
+        },
+      };
+    }
+
+    const { store } = fakeStore();
+    const summary = await runCycle([observing('a', 4), observing('b', 1)], store, {
+      concurrency: 2,
+      retry: { attempts: 1, baseDelayMs: 0, attemptTimeoutMs: 10_000 },
+      budgetMs: 50_000,
+    });
+
+    const a = seen.get('a');
+    const b = seen.get('b');
+    assert.ok(a && b);
+    assert.notEqual(a, b, 'two targets must not share one budget object');
+    assert.equal(a.retriesUsed, 4);
+    assert.equal(b.retriesUsed, 1, 'b must not be charged for the four retries a made');
+
+    const byId = new Map(summary.results.map((r) => [r.id, r]));
+    assert.equal(byId.get('a')?.rateLimitRetries, 4);
+    assert.equal(byId.get('b')?.rateLimitRetries, 1);
+    assert.equal(summary.ok, 2, 'both still succeeded');
+  });
+
+  it('computes a target deadline from the schedule alone, never from retries', () => {
+    // `targetDeadline` takes the budget end, the clock, the queue depth, the
+    // concurrency and the attempt timeout — and nothing about rate limiting.
+    // That is the whole reason a retry inside target A cannot move target B's
+    // deadline: there is no term for it to move.
+    const base = {
+      budgetEndsAt: 50_000,
+      now: 0,
+      queuedAfter: 3,
+      concurrency: 1,
+      attemptTimeoutMs: 10_000,
+    };
+    const deadline = targetDeadline(base);
+    assert.equal(targetDeadline({ ...base }), deadline);
+    assert.equal(deadline, 50_000 - 3 * 10_000);
+  });
+
+  it('keeps a rate-limit budget inside the attempt it belongs to', async () => {
+    // The budget's deadline must be the earlier of the attempt timeout and the
+    // target deadline, so a retry can never be started that the outer timeout
+    // would cut short — the property that stops a 429 becoming a timeout.
+    let observed: RateLimitBudget | null = null;
+    const target: IndexTarget = {
+      metadata: {
+        id: 'blend',
+        name: 'blend',
+        chain: 'stellar',
+        category: 'lending',
+        adapterRef: 'Fake',
+      },
+      run: async () => {
+        observed = currentRateLimitBudget();
+        return {
+          safetyScore: 50,
+          factors: FACTORS,
+          operationalState: OPERATIONAL_STATE,
+          computedAt: COMPUTED_AT,
+        };
+      },
+    };
+
+    const { store } = fakeStore();
+    const startedAt = Date.now();
+    await runCycle([target], store, {
+      retry: { attempts: 3, baseDelayMs: 1, attemptTimeoutMs: 10_000 },
+      budgetMs: 50_000,
+    });
+
+    const budget = observed as RateLimitBudget | null;
+    assert.ok(budget);
+    assert.ok(
+      budget.endsAt <= startedAt + 10_000 + 50,
+      'the budget must expire with the attempt, not with the cycle',
+    );
   });
 });

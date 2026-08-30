@@ -10,7 +10,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ORACLE_GRADING_READS, isMissingContractFunction, oracleNotGradable } from './index.ts';
+import { Address, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+
+import { LedgerEntries, ledgerKeyId } from '../ledger-entries.ts';
+import {
+  ORACLE_GRADING_READS,
+  decodeReserve,
+  isMissingContractFunction,
+  oracleNotGradable,
+  reserveConfigKey,
+  reserveDataKey,
+} from './index.ts';
 import type { OracleGradingReads } from './index.ts';
 
 // ---------------------------------------------------------------------------
@@ -251,5 +261,120 @@ describe('isMissingContractFunction separates a verdict from a run failure', () 
     // The error names which function was missing. Reading Orbit's max_age
     // failure as evidence about asset_configs would report a fact never read.
     assert.equal(isMissingContractFunction(REAL, 'asset_configs'), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reserve demultiplexing across a batched read
+// ---------------------------------------------------------------------------
+
+// `decodeReserve` reads one reserve out of a batch that holds every reserve of
+// the pool — and, if cross-target batching ever lands, of several pools at once.
+// That makes misattribution the sharp risk of this whole change: a reserve's
+// ResData carries the supply figures that drive utilizationSafety and
+// liquiditySafety, so pinning PoolB's b_supply onto PoolA's asset would publish
+// a confident, wrong number about a real market.
+//
+// The two properties tested are the two the endpoint actually exhibits, both
+// confirmed live on 2026-08-30: a key with no entry is OMITTED from the
+// response (so the response is shorter than the request), and nothing promises
+// the surviving entries come back in request order. Under the pre-batching
+// code neither could bite, because a call carried one reserve's two keys and
+// the decoder told them apart by sniffing the value for a `b_rate` field. Under
+// batching that sniff identifies a SHAPE and not a reserve, which is why it was
+// replaced by keyed lookup and why this suite exists.
+describe('decodeReserve pulls a reserve out of a batch by key', () => {
+  const POOL_A = 'CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD';
+  const POOL_B = 'CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS';
+  const ASSET = 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA';
+
+  const EXTENSION_POINT = xdr.ExtensionPoint.fromXDR(Buffer.from([0, 0, 0, 0]));
+
+  function entry(contract: string, value: Record<string, unknown>): xdr.LedgerEntryData {
+    return xdr.LedgerEntryData.contractData(
+      new xdr.ContractDataEntry({
+        ext: EXTENSION_POINT,
+        contract: new Address(contract).toScAddress(),
+        key: xdr.ScVal.scvSymbol('unused'),
+        durability: xdr.ContractDataDurability.persistent(),
+        val: nativeToScVal(value),
+      }),
+    );
+  }
+
+  const resConfig = (cFactor: number) => ({
+    decimals: 7,
+    c_factor: cFactor,
+    l_factor: 8_500_000,
+    util: 7_500_000,
+    max_util: 9_500_000,
+    enabled: true,
+  });
+  const resData = (bSupply: number) => ({
+    d_rate: 1_000_000_000,
+    b_rate: 1_000_000_000,
+    b_supply: bSupply,
+    d_supply: 1,
+  });
+
+  // One batch, both pools, the SAME asset in each — the collision case. Pool A's
+  // numbers and Pool B's are deliberately different so an attribution error
+  // shows up as a wrong value rather than as a coincidence.
+  function batch(entries: [xdr.LedgerKey, xdr.LedgerEntryData][]): LedgerEntries {
+    return new LedgerEntries(new Map(entries.map(([k, v]) => [ledgerKeyId(k), v])));
+  }
+
+  it('keeps two pools apart when both hold the same asset', () => {
+    const entries = batch([
+      [reserveConfigKey(POOL_A, ASSET), entry(POOL_A, resConfig(5_000_000))],
+      [reserveDataKey(POOL_A, ASSET), entry(POOL_A, resData(111))],
+      [reserveConfigKey(POOL_B, ASSET), entry(POOL_B, resConfig(9_000_000))],
+      [reserveDataKey(POOL_B, ASSET), entry(POOL_B, resData(222))],
+    ]);
+
+    const a = decodeReserve(entries, POOL_A, ASSET);
+    const b = decodeReserve(entries, POOL_B, ASSET);
+
+    assert.equal(a.config.cFactor, 5_000_000n);
+    assert.equal(a.data.bSupply, 111n);
+    assert.equal(b.config.cFactor, 9_000_000n);
+    assert.equal(b.data.bSupply, 222n);
+  });
+
+  it('does not hand one pool the other pool\u2019s reserve when a key is missing', () => {
+    // Pool A's ResData is absent — the real "entry does not exist" case. A
+    // positional decoder over this three-entry batch would slide Pool B's
+    // ResData into Pool A's slot and publish 222 as A's supply.
+    const entries = batch([
+      [reserveConfigKey(POOL_A, ASSET), entry(POOL_A, resConfig(5_000_000))],
+      [reserveConfigKey(POOL_B, ASSET), entry(POOL_B, resConfig(9_000_000))],
+      [reserveDataKey(POOL_B, ASSET), entry(POOL_B, resData(222))],
+    ]);
+
+    assert.throws(
+      () => decodeReserve(entries, POOL_A, ASSET),
+      /missing ResConfig\/ResData for asset .* in pool CAJJ/,
+      'a missing entry must fail this reserve, not borrow another pool\u2019s',
+    );
+
+    // And the pool that IS complete is unaffected — one absent key fails one
+    // reserve, exactly as one failed one-key call used to.
+    const b = decodeReserve(entries, POOL_B, ASSET);
+    assert.equal(b.data.bSupply, 222n);
+  });
+
+  it('tells ResConfig from ResData by key rather than by shape', () => {
+    // The sniff this replaced keyed off `'b_rate' in native`. Here both entries
+    // of one reserve are present and the decoder must still file each under the
+    // right half — checked by giving them values that would swap visibly.
+    const entries = batch([
+      [reserveConfigKey(POOL_A, ASSET), entry(POOL_A, resConfig(5_000_000))],
+      [reserveDataKey(POOL_A, ASSET), entry(POOL_A, resData(111))],
+    ]);
+    const a = decodeReserve(entries, POOL_A, ASSET);
+    assert.equal(a.asset, ASSET);
+    assert.equal(a.config.decimals, 7);
+    assert.equal(a.config.maxUtil, 9_500_000n);
+    assert.equal(a.data.dSupply, 1n);
   });
 });

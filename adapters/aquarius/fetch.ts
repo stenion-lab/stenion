@@ -16,10 +16,18 @@
 // the reason attached, and nothing is swallowed into a generic "fetch failed".
 // The distinction is what stops a blip in our own network path publishing
 // "dangerous admin control" across every pool at once.
+//
+// WHICH SIDE OF THAT LINE A FAILURE FALLS ON IS NOT DECIDED HERE. It is decided
+// by `../read-failure.ts`, on one test — did the subject answer? Horizon's
+// answers about a subject arrive as HTTP statuses, so a 4xx is captured and a
+// throw never is; the RPC's arrive as simulation errors, so a `SubjectAnswerError`
+// is captured and nothing else is. A rate limit we could not wait out, a 5xx and
+// a dropped connection are all facts about Stenion's read path, and every one of
+// them fails the run. `methodology/dex.md` § "A rate limit is not a reading"
+// carries the argument.
 
 import {
   Account,
-  Address,
   BASE_FEE,
   Contract,
   Keypair,
@@ -29,6 +37,14 @@ import {
 } from '@stellar/stellar-sdk';
 import { rpc } from '@stellar/stellar-sdk';
 
+import { contractInstanceKey, readLedgerEntries } from '../ledger-entries.ts';
+import { horizonFetch, rateLimitedServer } from '../rate-limit.ts';
+import {
+  SubjectAnswerError,
+  readingOrRethrow,
+  rethrowAsEndpointFailure,
+  throwIfEndpointStatus,
+} from '../read-failure.ts';
 import {
   AQUARIUS_POOL_TYPES,
   AQUARIUS_ROLES,
@@ -71,12 +87,29 @@ async function readContract(
     .build();
 
   const sim = await server.simulateTransaction(tx);
+  // BOTH of these are the CONTRACT answering, so both are minted as
+  // `SubjectAnswerError` — see ../read-failure.ts. A caller that is allowed to
+  // capture a revert as a reading (only `readRoles`, per methodology/dex.md) can
+  // then tell it apart from a rate limit or a dropped connection by the error's
+  // own type, rather than by parsing this message. Every other caller lets both
+  // propagate exactly as before.
   if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(`Aquarius: simulation of ${method} on ${contractId} failed: ${sim.error}`);
+    throw new SubjectAnswerError(
+      `Aquarius: simulation of ${method} on ${contractId} failed: ${sim.error}`,
+    );
   }
   const retval = sim.result?.retval;
-  if (!retval) throw new Error(`Aquarius: ${method} on ${contractId} returned no value`);
+  if (!retval) {
+    throw new SubjectAnswerError(`Aquarius: ${method} on ${contractId} returned no value`);
+  }
   return scValToNative(retval);
+}
+
+/** A contract's instance entry, decoded: its executable and its instance storage. */
+export interface AquariusInstance {
+  executableType: string;
+  runningWasm: string | null;
+  storage: Map<string, xdr.ScVal>;
 }
 
 /**
@@ -85,30 +118,21 @@ async function readContract(
  * Returns null when the contract has no instance entry at all, which is a real
  * reading about the address rather than an error — the caller decides what it
  * means, because it means different things for a pool and for a token.
+ *
+ * PURE, over an entry already read. Every instance entry this adapter needs —
+ * the pool's, the router's, and one per reserve token — is fetched in a single
+ * `getLedgerEntries` call by `fetchAquariusRawData`, so decoding cannot be the
+ * thing that decides when a read happens. A null argument (the key came back
+ * with no entry) and a null return mean the same thing they always did.
  */
-async function readInstance(
-  server: rpc.Server,
-  contractId: string,
-): Promise<{
-  executableType: string;
-  runningWasm: string | null;
-  storage: Map<string, xdr.ScVal>;
-} | null> {
-  const key = xdr.LedgerKey.contractData(
-    new xdr.LedgerKeyContractData({
-      contract: new Address(contractId).toScAddress(),
-      key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
-    }),
-  );
-  const resp = await server.getLedgerEntries(key);
-  if (resp.entries.length === 0) return null;
+function decodeInstance(entry: xdr.LedgerEntryData | null): AquariusInstance | null {
+  if (entry === null) return null;
 
-  const instance = resp.entries[0].val.contractData().val().instance();
+  const instance = entry.contractData().val().instance();
   const storage = new Map<string, xdr.ScVal>();
-  for (const entry of instance.storage() ?? []) {
-    const name = instanceKeyName(entry.key());
-    if (name !== null) storage.set(name, entry.val());
+  for (const storageEntry of instance.storage() ?? []) {
+    const name = instanceKeyName(storageEntry.key());
+    if (name !== null) storage.set(name, storageEntry.val());
   }
 
   const executable = instance.executable();
@@ -267,8 +291,15 @@ export function decodeRoles(native: unknown): AquariusRolesRead {
   return { status: 'read', roles };
 }
 
-/** Read one privileged account's Horizon posture. */
-async function readRoleAccount(
+/**
+ * Read one privileged account's Horizon posture.
+ *
+ * Exported for `fetch.test.ts`, like `decodeRoles`: the branches that matter
+ * here are the ones live data cannot produce — a 404 on a role holder, a 5xx, a
+ * Horizon that refuses us for rate — and each is a rulebook decision about
+ * whether the result is a reading or a failed run.
+ */
+export async function readRoleAccount(
   horizonUrl: string,
   address: string,
 ): Promise<AquariusRoleRaw['accounts'][number]> {
@@ -277,9 +308,15 @@ async function readRoleAccount(
   if (address.startsWith('C')) return { status: 'contract', address };
 
   const windowDays = 30;
+  const subject = `Horizon /accounts/${address}`;
   try {
-    const acctResp = await fetch(`${horizonUrl}/accounts/${address}`);
+    const acctResp = await horizonFetch(`${horizonUrl}/accounts/${address}`);
     if (!acctResp.ok) {
+      // A 4xx is Horizon answering ABOUT THIS ACCOUNT — "not here" — which is
+      // the localized cannot-assess methodology/dex.md sends to 0. A 429 or a
+      // 5xx is Horizon reporting its own condition and throws instead; see
+      // ../read-failure.ts.
+      throwIfEndpointStatus(subject, acctResp.status);
       return {
         status: 'failed',
         address,
@@ -288,10 +325,11 @@ async function readRoleAccount(
     }
     const acct = (await acctResp.json()) as HorizonAccount;
 
-    const opsResp = await fetch(
+    const opsResp = await horizonFetch(
       `${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`,
     );
     if (!opsResp.ok) {
+      throwIfEndpointStatus(`${subject}/operations`, opsResp.status);
       return { status: 'failed', address, reason: `Horizon ops fetch returned ${opsResp.status}` };
     }
     const opsBody = (await opsResp.json()) as HorizonOps;
@@ -313,11 +351,13 @@ async function readRoleAccount(
       },
     };
   } catch (error) {
-    return {
-      status: 'failed',
-      address,
-      reason: error instanceof Error ? error.message : String(error),
-    };
+    // NOTHING THAT THROWS OUT OF A HORIZON READ IS A READING ABOUT THIS ACCOUNT.
+    // Every answer Horizon has about it arrives as a status, handled above; a
+    // throw is a rate limit we could not wait out, a connection that never
+    // landed, or a body that was not Horizon's answer. Capturing one as `failed`
+    // would score this role 0 — and, because the rate-limit budget is per
+    // attempt, would take every later read in the same attempt with it.
+    rethrowAsEndpointFailure(subject, error);
   }
 }
 
@@ -332,14 +372,18 @@ async function readRoles(
   try {
     decoded = decodeRoles(await readContract(server, contractId, 'get_privileged_addrs'));
   } catch (error) {
-    // A revert here is a READING about the pool — "we could not read who
-    // controls this" — which methodology/dex.md sends to the unsafe end. It is
-    // not a run failure, so it is captured rather than rethrown.
+    // A REVERT here is a READING about the pool — "we could not read who
+    // controls this" — which methodology/dex.md sends to the unsafe end, so it is
+    // captured rather than rethrown. A rate limit or a dropped connection is not:
+    // `readingOrRethrow` returns text only for the `SubjectAnswerError` that
+    // `readContract` mints from the contract's own answer, and sends everything
+    // else up as a failed run.
     return {
       status: 'failed',
-      reason: `get_privileged_addrs() on ${contractId} failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      reason: `get_privileged_addrs() on ${contractId} failed: ${readingOrRethrow(
+        `get_privileged_addrs() on ${contractId}`,
+        error,
+      )}`,
     };
   }
   if (decoded.status === 'failed') return decoded;
@@ -385,14 +429,29 @@ export function parseAssetName(name: string): { code: string; issuer: string | n
   return { code, issuer };
 }
 
-/** Read an issuing account's flags from Horizon. */
-async function readIssuerFlags(horizonUrl: string, issuer: string): Promise<AquariusIssuerRead> {
+/**
+ * Read an issuing account's flags from Horizon.
+ *
+ * Exported for `fetch.test.ts`, for the same reason as `readRoleAccount`: this
+ * is where methodology/dex.md's "the read applies and did not happen" 0 is
+ * separated from a failed run, and no live issuer produces either branch.
+ */
+export async function readIssuerFlags(
+  horizonUrl: string,
+  issuer: string,
+): Promise<AquariusIssuerRead> {
+  const subject = `Horizon /accounts/${issuer}`;
   try {
-    const resp = await fetch(`${horizonUrl}/accounts/${issuer}`);
+    const resp = await horizonFetch(`${horizonUrl}/accounts/${issuer}`);
     if (!resp.ok) {
       // The token IS a SAC, so the read APPLIES and did not happen — the unsafe
       // end, never the wasm route-(a) disclosure. Conflating the two would
       // silently upgrade an unknown into an exemption.
+      //
+      // ONLY WHEN HORIZON ANSWERED ABOUT THIS ISSUER, i.e. a 4xx. A 429 or a 5xx
+      // is Horizon's own condition and fails the run instead — a score that moves
+      // with our request rate is not a reading of this issuer's flags.
+      throwIfEndpointStatus(subject, resp.status);
       return {
         status: 'failed',
         issuer,
@@ -411,21 +470,25 @@ async function readIssuerFlags(horizonUrl: string, issuer: string): Promise<Aqua
       },
     };
   } catch (error) {
-    return {
-      status: 'failed',
-      issuer,
-      reason: error instanceof Error ? error.message : String(error),
-    };
+    // Same rule as `readRoleAccount`: a throw out of Horizon is never an answer
+    // about this issuer, so it is a failed run and not a scored 0.
+    rethrowAsEndpointFailure(subject, error);
   }
 }
 
-/** Read one reserve token: what kind of contract it is, and who can control it. */
+/**
+ * Read one reserve token: what kind of contract it is, and who can control it.
+ *
+ * The token's instance entry arrives already read — it travelled in the same
+ * `getLedgerEntries` call as the pool's, the router's and every other token's.
+ * What remains here is Horizon, which has no batch form: an issuing account is
+ * one HTTP GET whether or not anything else was batched.
+ */
 async function readToken(
-  server: rpc.Server,
   horizonUrl: string,
   address: string,
+  instance: AquariusInstance | null,
 ): Promise<AquariusTokenRaw> {
-  const instance = await readInstance(server, address);
   const isStellarAsset = instance?.executableType === STELLAR_ASSET_EXECUTABLE;
 
   let code: string | null = null;
@@ -508,13 +571,20 @@ export function unrecognisedPoolType(poolId: string, value: unknown): string {
 // The fetch itself
 // ---------------------------------------------------------------------------
 
-/** Read the protocol-wide router state shared by every pool. */
+/**
+ * Read the protocol-wide router state shared by every pool.
+ *
+ * `instance` is passed in for the same reason a token's is: the router's
+ * instance key is known before any call is made (it is a module constant), so
+ * it rides in the pool's one batched `getLedgerEntries` rather than costing a
+ * round trip of its own.
+ */
 async function fetchRouter(
   server: rpc.Server,
   horizonUrl: string,
   accountCache: Map<string, AquariusRoleRaw['accounts'][number]>,
+  instance: AquariusInstance | null,
 ): Promise<AquariusRouterRaw> {
-  const instance = await readInstance(server, AQUARIUS_ROUTER_ID);
   const [contractName, version, emergencyMode] = await Promise.all([
     readContract(server, AQUARIUS_ROUTER_ID, 'contract_name'),
     readContract(server, AQUARIUS_ROUTER_ID, 'version'),
@@ -544,7 +614,8 @@ export async function fetchAquariusRawData(target: {
   poolId: string;
 }): Promise<AquariusRawData> {
   const { rpcUrl, horizonUrl, poolId } = target;
-  const server = new rpc.Server(rpcUrl);
+  // Rate-limit retry lives in the server wrapper — see ../rate-limit.ts.
+  const server = rateLimitedServer(rpcUrl);
 
   // Shared across the router and this pool for the duration of ONE fetch. See
   // readRoles for why this is safe and what it deliberately does not assume.
@@ -555,8 +626,6 @@ export async function fetchAquariusRawData(target: {
   const poolTypeNative = await readContract(server, poolId, 'pool_type');
   const poolType = asPoolType(poolTypeNative);
   if (poolType === null) throw new Error(unrecognisedPoolType(poolId, poolTypeNative));
-
-  const instance = await readInstance(server, poolId);
 
   // Kill flags and emergency mode go through the GETTERS, never instance
   // storage — see AquariusKillFlagsRaw for the three reasons.
@@ -604,14 +673,45 @@ export async function fetchAquariusRawData(target: {
     claim: killedClaim === true,
   };
 
+  // EVERY INSTANCE ENTRY THIS POOL NEEDS, IN ONE CALL: the pool's own, the
+  // router's, and one per reserve token. All three kinds are independent reads
+  // of the same ledger — the only reason they used to be 2 + T separate calls
+  // is that each decoder fetched what it needed where it needed it. The token
+  // keys are the ones that scale: a three-token pool cost five calls where this
+  // costs one, and the shared public endpoint rate-limits on request count.
+  //
+  // The pool's instance is read HERE rather than before the getters above, so
+  // that the token addresses `get_tokens()` returns are known in time to join
+  // the same call. Nothing observable depends on the order — `readUpgrade` is
+  // pure and `fetchedAt` is stamped at the end, as before.
+  const poolInstanceKey = contractInstanceKey(poolId);
+  const routerInstanceKey = contractInstanceKey(AQUARIUS_ROUTER_ID);
+  const instances = await readLedgerEntries(server, [
+    poolInstanceKey,
+    routerInstanceKey,
+    ...tokens.map(contractInstanceKey),
+  ]);
+  const instance = decodeInstance(instances.get(poolInstanceKey));
+
   const reserveTokens: AquariusTokenRaw[] = [];
   for (const address of tokens) {
-    reserveTokens.push(await readToken(server, horizonUrl, address));
+    reserveTokens.push(
+      await readToken(
+        horizonUrl,
+        address,
+        decodeInstance(instances.get(contractInstanceKey(address))),
+      ),
+    );
   }
 
   const roles = await readRoles(server, horizonUrl, poolId, accountCache);
   const upgrade = readUpgrade(instance);
-  const router = await fetchRouter(server, horizonUrl, accountCache);
+  const router = await fetchRouter(
+    server,
+    horizonUrl,
+    accountCache,
+    decodeInstance(instances.get(routerInstanceKey)),
+  );
 
   return {
     poolId,

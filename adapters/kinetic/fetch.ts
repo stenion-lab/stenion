@@ -19,6 +19,12 @@ import {
 import { rpc } from '@stellar/stellar-sdk';
 
 import {
+  contractInstanceKey,
+  readLedgerEntries,
+  type LedgerEntrySource,
+} from '../ledger-entries.ts';
+import { horizonFetch, rateLimitedServer } from '../rate-limit.ts';
+import {
   ACTIVE_BIT,
   ADMIN_KEY,
   BORROWING_ENABLED_BIT,
@@ -50,34 +56,42 @@ import type {
 // RPC helpers
 // ---------------------------------------------------------------------------
 
-/** Read a contract's *instance* storage (holds PADMIN, ORACLE, PCONFIG for the router) into a name->ScVal map. */
+/**
+ * Read a contract's *instance* storage (holds PADMIN, ORACLE, PCONFIG for the
+ * router) into a name->ScVal map.
+ *
+ * KINETIC'S TWO INSTANCE READS CANNOT BE BATCHED WITH EACH OTHER, and that is a
+ * property of the contracts rather than of this code: the oracle's address is
+ * only learnable by reading the router's instance storage first, so the second
+ * key does not exist until the first call has returned. Everything else this
+ * adapter reads is a `simulateTransaction`, which takes one transaction per
+ * call and has no batch form at all. So Kinetic issues the same two
+ * `getLedgerEntries` calls after this change as before it — see
+ * `fetchKineticRawData`. It goes through the shared batching module anyway, so
+ * that no adapter keeps a private copy of key construction or of the
+ * absent-entry contract.
+ */
 async function readInstanceStorage(
-  server: rpc.Server,
+  server: LedgerEntrySource,
   contractId: string,
 ): Promise<Map<string, xdr.ScVal>> {
-  const key = xdr.LedgerKey.contractData(
-    new xdr.LedgerKeyContractData({
-      contract: new Address(contractId).toScAddress(),
-      key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
-    }),
-  );
-  const resp = await server.getLedgerEntries(key);
-  if (resp.entries.length === 0) {
+  const key = contractInstanceKey(contractId);
+  const entry = (await readLedgerEntries(server, [key])).get(key);
+  if (entry === null) {
     throw new Error(`Kinetic: no instance entry for contract ${contractId}`);
   }
-  const instance = resp.entries[0].val.contractData().val().instance();
+  const instance = entry.contractData().val().instance();
   const storage = instance.storage() ?? [];
   const out = new Map<string, xdr.ScVal>();
-  for (const entry of storage) {
-    const name = scValToNative(entry.key());
+  for (const storageEntry of storage) {
+    const name = scValToNative(storageEntry.key());
     // Keys come in two shapes across K2's contracts: a bare symbol (the router's
     // `PADMIN`/`ORACLE`, written with symbol_short!) and a single-element enum
     // vec (the price oracle's `["PriceCacheTtl"]`, from a #[contracttype] key
     // enum). Index both by the same name so callers don't care which is used.
-    if (typeof name === 'string') out.set(name, entry.val());
+    if (typeof name === 'string') out.set(name, storageEntry.val());
     else if (Array.isArray(name) && name.length === 1 && typeof name[0] === 'string') {
-      out.set(name[0], entry.val());
+      out.set(name[0], storageEntry.val());
     }
   }
   return out;
@@ -272,7 +286,7 @@ async function fetchAdmin(horizonUrl: string, address: string): Promise<KineticA
   }
 
   const windowDays = 30;
-  const acctResp = await fetch(`${horizonUrl}/accounts/${address}`);
+  const acctResp = await horizonFetch(`${horizonUrl}/accounts/${address}`);
   if (!acctResp.ok) {
     throw new Error(
       `Kinetic: Horizon account fetch for admin ${address} failed (${acctResp.status})`,
@@ -280,7 +294,9 @@ async function fetchAdmin(horizonUrl: string, address: string): Promise<KineticA
   }
   const acct = (await acctResp.json()) as HorizonAccount;
 
-  const opsResp = await fetch(`${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`);
+  const opsResp = await horizonFetch(
+    `${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`,
+  );
   if (!opsResp.ok) {
     throw new Error(`Kinetic: Horizon ops fetch for admin ${address} failed (${opsResp.status})`);
   }
@@ -346,7 +362,8 @@ export async function fetchKineticRawData(target: {
   routerId: string;
 }): Promise<KineticRawData> {
   const { rpcUrl, horizonUrl, routerId } = target;
-  const server = new rpc.Server(rpcUrl);
+  // Rate-limit retry lives in the server wrapper — see ../rate-limit.ts.
+  const server = rateLimitedServer(rpcUrl);
 
   // Router instance storage → admin (PADMIN) and oracle (ORACLE) addresses.
   const instance = await readInstanceStorage(server, routerId);
