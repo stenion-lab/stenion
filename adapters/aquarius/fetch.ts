@@ -29,6 +29,7 @@ import {
 import { rpc } from '@stellar/stellar-sdk';
 
 import { contractInstanceKey, readLedgerEntries } from '../ledger-entries.ts';
+import { horizonFetch, rateLimitedServer } from '../rate-limit.ts';
 import {
   AQUARIUS_POOL_TYPES,
   AQUARIUS_ROLES,
@@ -276,7 +277,7 @@ async function readRoleAccount(
 
   const windowDays = 30;
   try {
-    const acctResp = await fetch(`${horizonUrl}/accounts/${address}`);
+    const acctResp = await horizonFetch(`${horizonUrl}/accounts/${address}`);
     if (!acctResp.ok) {
       return {
         status: 'failed',
@@ -286,7 +287,7 @@ async function readRoleAccount(
     }
     const acct = (await acctResp.json()) as HorizonAccount;
 
-    const opsResp = await fetch(
+    const opsResp = await horizonFetch(
       `${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`,
     );
     if (!opsResp.ok) {
@@ -386,7 +387,7 @@ export function parseAssetName(name: string): { code: string; issuer: string | n
 /** Read an issuing account's flags from Horizon. */
 async function readIssuerFlags(horizonUrl: string, issuer: string): Promise<AquariusIssuerRead> {
   try {
-    const resp = await fetch(`${horizonUrl}/accounts/${issuer}`);
+    const resp = await horizonFetch(`${horizonUrl}/accounts/${issuer}`);
     if (!resp.ok) {
       // The token IS a SAC, so the read APPLIES and did not happen — the unsafe
       // end, never the wasm route-(a) disclosure. Conflating the two would
@@ -555,7 +556,8 @@ export async function fetchAquariusRawData(target: {
   poolId: string;
 }): Promise<AquariusRawData> {
   const { rpcUrl, horizonUrl, poolId } = target;
-  const server = new rpc.Server(rpcUrl);
+  // Rate-limit retry lives in the server wrapper — see ../rate-limit.ts.
+  const server = rateLimitedServer(rpcUrl);
 
   // Shared across the router and this pool for the duration of ONE fetch. See
   // readRoles for why this is safe and what it deliberately does not assume.

@@ -25,6 +25,7 @@ import {
   type LedgerEntries,
   type LedgerEntrySource,
 } from '../ledger-entries.ts';
+import { horizonFetch, rateLimitedServer } from '../rate-limit.ts';
 import { NETWORK_PASSPHRASE } from './types.ts';
 import type {
   AssetConfigNative,
@@ -456,7 +457,7 @@ async function fetchAdmin(horizonUrl: string, address: string): Promise<BlendAdm
   }
 
   const windowDays = 30;
-  const acctResp = await fetch(`${horizonUrl}/accounts/${address}`);
+  const acctResp = await horizonFetch(`${horizonUrl}/accounts/${address}`);
   if (!acctResp.ok) {
     throw new Error(
       `Blend: Horizon account fetch for admin ${address} failed (${acctResp.status})`,
@@ -464,7 +465,9 @@ async function fetchAdmin(horizonUrl: string, address: string): Promise<BlendAdm
   }
   const acct = (await acctResp.json()) as HorizonAccount;
 
-  const opsResp = await fetch(`${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`);
+  const opsResp = await horizonFetch(
+    `${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`,
+  );
   if (!opsResp.ok) {
     throw new Error(`Blend: Horizon ops fetch for admin ${address} failed (${opsResp.status})`);
   }
@@ -505,7 +508,9 @@ export async function fetchBlendRawData(target: {
   poolId: string;
 }): Promise<BlendRawData> {
   const { rpcUrl, horizonUrl, poolId } = target;
-  const server = new rpc.Server(rpcUrl);
+  // Rate-limit retry lives in the server wrapper, so every RPC read below gets
+  // it without a call site knowing. See ../rate-limit.ts.
+  const server = rateLimitedServer(rpcUrl);
 
   // Pool instance storage → Config (oracle, status) and Admin.
   const instance = await readInstanceStorage(server, poolId);

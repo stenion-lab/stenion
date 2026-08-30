@@ -478,6 +478,21 @@ Then, iterating on your adapter:
    and cannot be batched, so a getter is always a request — which makes "can this be read from a
    ledger entry instead of a getter?" a real question when a fetch is expensive.
 
+   **Build the RPC client with `rateLimitedServer(rpcUrl)` and call Horizon through
+   `horizonFetch(url)`**, both from `adapters/rate-limit.ts` — never `new rpc.Server(...)` or a bare
+   `fetch` for Horizon. That is what gives a `429` a bounded, in-place retry instead of failing the
+   whole target, and it needs no plumbing: the budget is ambient (see `architecture/`'s "Rate
+   limiting" section). Nothing else is retried — a simulation error, a decode failure and your own
+   named verdicts all still propagate on the first throw, which is deliberate and is what keeps an
+   alert meaningful.
+
+   Two consequences worth knowing when you write `fetch.ts`. A Horizon `429` is a **resolved
+   response**, not a throw, so any status check you write runs after the retries have already
+   happened — you will see the eventual answer, not the refusal. And if your adapter captures a
+   Horizon failure as a scoring reading rather than throwing (as Aquarius does for role and issuer
+   reads), an exhausted rate limit arrives there as that reading's `reason`, carrying the 429 text
+   — check that this is what you want for the factor it feeds.
+
 2. Register it in the indexer's `buildTargets()` ([`indexer/src/index.ts`](indexer/src/index.ts))
    via the existing `toTarget<T>()` wrapper — that's what lets your adapter's `TRawData` coexist in
    one typed run loop with the others.

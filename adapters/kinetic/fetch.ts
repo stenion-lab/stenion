@@ -23,6 +23,7 @@ import {
   readLedgerEntries,
   type LedgerEntrySource,
 } from '../ledger-entries.ts';
+import { horizonFetch, rateLimitedServer } from '../rate-limit.ts';
 import {
   ACTIVE_BIT,
   ADMIN_KEY,
@@ -285,7 +286,7 @@ async function fetchAdmin(horizonUrl: string, address: string): Promise<KineticA
   }
 
   const windowDays = 30;
-  const acctResp = await fetch(`${horizonUrl}/accounts/${address}`);
+  const acctResp = await horizonFetch(`${horizonUrl}/accounts/${address}`);
   if (!acctResp.ok) {
     throw new Error(
       `Kinetic: Horizon account fetch for admin ${address} failed (${acctResp.status})`,
@@ -293,7 +294,9 @@ async function fetchAdmin(horizonUrl: string, address: string): Promise<KineticA
   }
   const acct = (await acctResp.json()) as HorizonAccount;
 
-  const opsResp = await fetch(`${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`);
+  const opsResp = await horizonFetch(
+    `${horizonUrl}/accounts/${address}/operations?order=desc&limit=200`,
+  );
   if (!opsResp.ok) {
     throw new Error(`Kinetic: Horizon ops fetch for admin ${address} failed (${opsResp.status})`);
   }
@@ -359,7 +362,8 @@ export async function fetchKineticRawData(target: {
   routerId: string;
 }): Promise<KineticRawData> {
   const { rpcUrl, horizonUrl, routerId } = target;
-  const server = new rpc.Server(rpcUrl);
+  // Rate-limit retry lives in the server wrapper — see ../rate-limit.ts.
+  const server = rateLimitedServer(rpcUrl);
 
   // Router instance storage → admin (PADMIN) and oracle (ORACLE) addresses.
   const instance = await readInstanceStorage(server, routerId);

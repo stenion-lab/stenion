@@ -28,13 +28,20 @@
 // reach it), and ONE alert POST per cycle (the notifier fires after the pool
 // joins, outside any worker, so it cannot become one message per protocol).
 
-import { METHODOLOGY_VERSIONS } from '@stenion/core';
+import {
+  DEFAULT_RATE_LIMIT_POLICY,
+  METHODOLOGY_VERSIONS,
+  RateLimitBudget,
+  isRateLimitExhausted,
+  runWithRateLimitBudget,
+} from '@stenion/core';
 import type {
   Adapter,
   FactorMap,
   OperationalState,
   ProtocolCategory,
   ProtocolMetadata,
+  RateLimitPolicy,
 } from '@stenion/core';
 import type { RunRecord, Store } from '@stenion/db';
 
@@ -133,6 +140,31 @@ export interface CycleRunResult {
   /** Attempts actually made (1 = succeeded, or failed, first time). */
   attempts?: number;
   /**
+   * Rate-limit retries made INSIDE the winning attempt, absent when there were
+   * none.
+   *
+   * This is the field that separates the second of three outcomes from the
+   * first: a clean success has no `rateLimitRetries`, a retry-success has a
+   * positive one and is still `status: 'ok'`. A target that succeeded after
+   * waiting out two 429s is not a failure and must not reach the alert path —
+   * `decideAlert` only ever reads `failed` rows, so it cannot — but it is also
+   * not the same as one that sailed through, and a summary that could not tell
+   * them apart would hide the endpoint pressure entirely until it became an
+   * outage.
+   */
+  rateLimitRetries?: number;
+  /**
+   * True when this target FAILED because the rate-limit budget ran out, i.e.
+   * the third outcome.
+   *
+   * Redundant with `error`, which already names the 429s, and deliberately so:
+   * the message is for a human reading an alert, this is for anything counting.
+   * Absent on every other kind of failure, so a timeout, a decode break and a
+   * changed contract interface stay distinguishable from the shared endpoint
+   * being busy.
+   */
+  rateLimited?: boolean;
+  /**
    * Wall-clock ms this target's scoring took, retries and backoff included, from
    * the moment a worker picked it up to the moment its outcome was decided. The
    * DB write is deliberately outside it: this measures the adapter, not Neon.
@@ -174,6 +206,17 @@ export interface CycleSummary {
  */
 export interface CycleOptions {
   retry?: RetryPolicy;
+  /**
+   * How much of an attempt may be spent waiting out `429`s. Defaults to
+   * `DEFAULT_RATE_LIMIT_POLICY`, whose numbers are derived from the measured
+   * deployed attempt durations against `attemptTimeoutMs` — see that constant.
+   *
+   * Injectable for tests only. It is deliberately NOT env-configurable: the
+   * schedule is valid only in relation to the attempt timeout, and an env var
+   * that let the two be set independently would let someone configure a backoff
+   * that cannot fit, turning honest 429s into misleading attempt timeouts.
+   */
+  rateLimit?: RateLimitPolicy;
   /**
    * Wall-clock budget for the whole run loop. The hard constraint behind it is
    * Vercel Hobby's `maxDuration = 60`, which cannot be raised: a cycle killed
@@ -405,6 +448,7 @@ export async function runCycle(
   options: CycleOptions = {},
 ): Promise<CycleSummary> {
   const retry = options.retry ?? NO_RETRY;
+  const rateLimitPolicy = options.rateLimit ?? DEFAULT_RATE_LIMIT_POLICY;
   const deps = options.deps ?? {};
   const now = deps.now ?? Date.now;
   const budgetMs = options.budgetMs ?? Number.POSITIVE_INFINITY;
@@ -449,12 +493,35 @@ export async function runCycle(
       attemptTimeoutMs: retry.attemptTimeoutMs,
     });
 
+    // ONE RATE-LIMIT BUDGET PER ATTEMPT, established here because this is the
+    // only place that knows when the attempt must end. `withRetry` calls this
+    // once per attempt, so a second attempt starts with a full allowance rather
+    // than inheriting what the first one spent — a fresh attempt is a fresh
+    // 10s, and the budget only ever governs the attempt it belongs to.
+    //
+    // The deadline handed to the budget is the EARLIER of this attempt's own
+    // timeout and the target's deadline, so a retry is never started that the
+    // outer timeout would cut short. That is what makes a persistently-429ing
+    // endpoint surface as `RateLimitExhaustedError` rather than as a generic
+    // `AttemptTimeoutError` — the budget gives up first, on purpose, and says
+    // why.
+    let budget: RateLimitBudget | null = null;
+    const runAttempt = (): Promise<Awaited<ReturnType<IndexTarget['run']>>> => {
+      const attemptEndsAt = Math.min(now() + retry.attemptTimeoutMs, deadlineAt);
+      budget = new RateLimitBudget(rateLimitPolicy, attemptEndsAt);
+      // Ambient rather than a parameter: `Adapter.fetchRawData()` takes none,
+      // and adding one would be an interface change across every adapter. See
+      // core's rate-limit module for why AsyncLocalStorage and not a module
+      // global (concurrency would make two targets share one allowance).
+      return runWithRateLimitBudget(budget, () => target.run());
+    };
+
     // Build the run outcome first (adapter errors caught here), then persist it
     // separately so a DB write failure is logged without aborting the cycle.
     let record: RunRecord;
     let result: CycleRunResult;
     try {
-      const { value, attempts } = await withRetry(() => target.run(), retry, deadlineAt, deps);
+      const { value, attempts } = await withRetry(runAttempt, retry, deadlineAt, deps);
       const { safetyScore, factors, operationalState, computedAt } = value;
       record = {
         protocolId: target.metadata.id,
@@ -474,10 +541,24 @@ export async function runCycle(
         computedAt: computedAt.toISOString(),
         runAt,
       };
-      result = { id: target.metadata.id, status: 'ok', safetyScore, attempts };
+      const rateLimitRetries = (budget as RateLimitBudget | null)?.retriesUsed ?? 0;
+      result = {
+        id: target.metadata.id,
+        status: 'ok',
+        safetyScore,
+        attempts,
+        // Present only when it happened, so a clean success stays a bare row.
+        ...(rateLimitRetries > 0 ? { rateLimitRetries } : {}),
+      };
       const retried = attempts > 1 ? ` (after ${attempts} attempts)` : '';
+      // Outcome two of three, logged as itself: `ok`, but with the endpoint
+      // pressure named. Still `console.log` and not `console.error` — this
+      // target succeeded, and logging it as an error is how a real failure stops
+      // being noticed.
+      const rateLimited =
+        rateLimitRetries > 0 ? ` (waited out ${rateLimitRetries} rate-limit response(s))` : '';
       console.log(
-        `[${runAt}] ${target.metadata.id}: safetyScore=${safetyScore}${retried} ` +
+        `[${runAt}] ${target.metadata.id}: safetyScore=${safetyScore}${retried}${rateLimited} ` +
           `in ${now() - startedTargetAt}ms`,
       );
     } catch (err) {
@@ -486,7 +567,18 @@ export async function runCycle(
       // any retry at all — a protocol that is genuinely down still shows as down.
       const error = err instanceof Error ? err.message : String(err);
       record = { protocolId: target.metadata.id, status: 'failed', error, runAt };
-      result = { id: target.metadata.id, status: 'failed', error, attempts: retry.attempts };
+      // Outcome three of three. The message already names the 429s (see
+      // RateLimitExhaustedError); the flag is for anything counting rather than
+      // reading, and keeps "the shared endpoint refused us" distinguishable from
+      // a timeout or a changed contract interface without parsing prose.
+      const exhausted = isRateLimitExhausted(err);
+      result = {
+        id: target.metadata.id,
+        status: 'failed',
+        error,
+        attempts: retry.attempts,
+        ...(exhausted ? { rateLimited: true } : {}),
+      };
       console.error(
         `[${runAt}] ${target.metadata.id}: FAILED — ${error} (after ${now() - startedTargetAt}ms)`,
       );

@@ -94,3 +94,78 @@ collect-keys phase and a consume-entries phase — an `Adapter` interface change
 the sequential dependencies every adapter has (a pool's oracle address comes out of its instance
 entry; a pool's token addresses come out of a simulation). It is a design question of its own, and
 it should be revisited only if concurrency is raised.
+
+### Rate limiting: retried in place, and never mistaken for a broken protocol
+
+A `429` from the shared public RPC is a fact about our path to the endpoint, not about the protocol
+being scored. Recording it identically to a changed contract interface is what makes an alert stop
+meaning anything, so the pipeline separates the two — and separates both from a target that merely
+had to wait.
+
+**Two retry layers, doing different jobs.** `indexer/src/retry.ts` retries a whole TARGET: it re-runs
+`fetchRawData()` from the first request. That is right for "this protocol's read failed" and wrong
+for "request 15 of 20 was refused" — re-running reissues the fourteen requests that already
+succeeded, costs a full extra attempt, and raises the very request rate that caused the 429.
+Measured on the deployed cron route on 2026-08-30: three targets failed with
+`Request failed with status code 429` after `attempts: 3`, i.e. the target-level retry ran three
+times and was rate-limited every time. `core/src/rate-limit.ts` plus `adapters/rate-limit.ts` add a
+second layer that retries only the ONE call that was refused, in place.
+
+**Only a 429 is retried.** A malformed response, a simulation error, a decode failure, the
+oracle-legibility verdict and an attempt timeout all propagate on the first throw, exactly as
+before. Detection is on the status the server sent, never on the error's class (minified in the
+dashboard bundle) and never primarily on message text:
+
+| transport                            | how a 429 arrives                                                                                                         | detected by                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Soroban RPC (`@stellar/stellar-sdk`) | **throws** an AxiosError, `message: "Request failed with status code 429"`, `code: ERR_BAD_REQUEST` (shared by every 4xx) | `error.response.status === 429`                          |
+| Horizon (plain `fetch`)              | **resolves** with a `Response`, `status: 429`, `Retry-After` header                                                       | `response.status === 429`, converted into the same shape |
+
+Both confirmed empirically on 2026-08-30 against a loopback server, and the RPC message string
+matches what the deployed run summary recorded.
+
+**The schedule fits inside `STENION_ATTEMPT_TIMEOUT_MS`; it does not extend it.**
+
+```
+attempt cap                                  10,000 ms
+slowest healthy attempt (kinetic, deployed)   6,363 ms
+headroom                                      3,637 ms
+
+schedule      250 ms -> 500 ms -> 1,000 ms   (<=3 retries for any one call)
+attempt caps  <=4 retries total, <=2,000 ms asleep total
+worst case    2,000 ms sleeping + 4 x 235 ms retried calls = 2,940 ms
+              6,363 + 2,940 = 9,303 ms       — 697 ms of margin
+```
+
+The budget is **per attempt, not per call**: a target makes 11–27 requests, and per-call budgets
+would let a handful of refusals walk straight through the timeout. It is carried from the indexer
+into the adapters through an `AsyncLocalStorage` scope rather than a parameter, because a parameter
+would mean changing `Adapter.fetchRawData()` across core and every adapter, and a module global
+would have two concurrent targets silently spend each other's allowance the day
+`STENION_CYCLE_CONCURRENCY` is raised.
+
+It is also **deadline-aware**, which is the structural half of the guarantee: a retry is started only
+when the sleep plus a call worth making both fit before the attempt ends. So a persistently-429ing
+endpoint runs out of rate-limit budget _before_ the attempt timeout fires, and fails as
+`RateLimitExhaustedError` naming the 429s rather than as a generic
+`attempt exceeded its 10000ms time budget`. That ordering is the whole point of capping the retries
+low — the cap is not caution, it is what keeps the failure legible.
+
+**Three outcomes, told apart** (`CycleRunResult`, returned by the cron route):
+
+| outcome                 | `status` | fields                                       | alert path                                               |
+| ----------------------- | -------- | -------------------------------------------- | -------------------------------------------------------- |
+| clean success           | `ok`     | neither field present                        | not reached                                              |
+| retry-success           | `ok`     | `rateLimitRetries: n > 0`                    | **not reached** — `decideAlert` reads `failed` rows only |
+| retry-exhausted failure | `failed` | `rateLimited: true`, `error` naming the 429s | normal streak alerting                                   |
+
+Retries are logged per occurrence at `warn` (`[rate-limit] 429 on … — retrying in 250ms`), and a
+retry-success is still logged as a success — logging it as an error is how real failures stop being
+noticed.
+
+**The policy is a code constant, not an env var**, deliberately. Its numbers are valid only in
+relation to `STENION_ATTEMPT_TIMEOUT_MS`; an env var that let the two be set independently would
+let someone configure a backoff that cannot fit, which converts honest 429s back into misleading
+timeouts. Changing it means changing `DEFAULT_RATE_LIMIT_POLICY` and the arithmetic beside it, at
+the same review bar — and `core/src/rate-limit.test.ts` asserts the worst case still clears the
+attempt cap with at least 500ms to spare.
