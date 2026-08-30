@@ -392,13 +392,16 @@ still recorded as `failed` — a protocol that is genuinely down still shows as 
   ceil(targetCount / STENION_CYCLE_CONCURRENCY) * STENION_ATTEMPT_TIMEOUT_MS <= STENION_CYCLE_BUDGET_MS
   ```
 
-  At the shipped defaults (50s budget, 10s attempt, concurrency 1) that holds to **five targets** and
-  fails at six — and six cannot be bought with a bigger budget, because six attempts need the whole
-  60s `maxDuration`. `cycleFeasibility()`
+  At the shipped defaults (50s budget, 10s attempt, concurrency 1) that holds to **five targets per
+  invocation** and fails at six — and six cannot be bought with a bigger budget, because six attempts
+  need the whole 60s `maxDuration`. It is bought instead by **sharding**: `runCycle` only ever sees
+  one shard's targets, so this condition is evaluated against that subset and `n` shards carry
+  `5n` targets (see `selectShard`, and the job table in
+  [`deploy-architecture.md`](deploy-architecture.md)). `cycleFeasibility()`
   checks it every cycle and at indexer startup, and logs a `[budget]` warning naming the numbers and
-  the levers (raise concurrency, lower the attempt timeout, or shard). It **warns and runs** rather
-  than refusing — taking the whole registry down because someone registered a fifth pool is worse
-  than running five protocols imperfectly and saying so. Past the ceiling it degrades to whole
+  the levers (raise concurrency, lower the attempt timeout, or add a shard). It **warns and runs**
+  rather than refusing — taking the whole registry down because someone registered a fifth pool is
+  worse than running five protocols imperfectly and saying so. Past the ceiling it degrades to whole
   attempts on a first-come basis with the tail failing cleanly (`DeadlineExceededError`) and going
   visibly stale on `/api/v1/health`, rather than squeezing every target into a length at which none
   of them can succeed.

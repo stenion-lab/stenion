@@ -21,6 +21,11 @@ separate services. Everything runs from the single Next.js app:
   every 5 minutes with `Authorization: Bearer <CRON_SECRET>`. The route itself is stateless about
   cadence: it runs exactly one cycle per request, so the interval is entirely the caller's.
 
+  **One job per shard.** `POST /api/cron/run-indexer?shard=<i>&totalShards=<n>` scores only the
+  targets belonging to shard `i`; with no parameters it scores the whole registry, which is what
+  the single job configured today does. See "Sharding the registry across invocations" below for
+  the job table and the staggering rule.
+
   **The schedule is not in version control.** It lives in the cron-job.org dashboard — there is no
   workflow file, no `vercel.json` `crons` entry, and no other scheduling config in this repo.
   Changing the cadence, pausing indexing, or rotating the target URL is done in that service's UI,
@@ -199,7 +204,10 @@ before a single token is looked at. The adapter already caches accounts by addre
 of one fetch, which is what stops the router's roles and the pool's roles being read twice; without
 it the figure would be 28.
 
-> **The registry's ceiling is the deploy, not the census — and it is five targets.**
+> **The registry's ceiling is the deploy, not the census — and it is five targets per invocation.**
+> (Written before sharding existed, when one invocation WAS the registry. The arithmetic below is
+> unchanged and still governs one shard; what it no longer bounds is the registry as a whole — see
+> "Sharding the registry across invocations".)
 > `cycleFeasibility()` checks `ceil(targets / concurrency) * ATTEMPT_TIMEOUT_MS <= CYCLE_BUDGET_MS`.
 > At concurrency **1** and `ATTEMPT_TIMEOUT_MS` 10,000, the old 42,000ms budget allowed exactly
 > **four** targets — the four lending markets that were already registered — so registering **any**
@@ -247,23 +255,166 @@ it the figure would be 28.
 > The ceiling is still load-bearing and still respected; what changed is that there are now
 > measurements to size against, which is exactly what the previous comment on this default asked for.
 >
-> **This is the last target the budget can buy.** A sixth needs 60,000ms of attempts, which **is**
-> the `maxDuration` ceiling — so it cannot come from here. It has to come from a lower attempt
-> timeout justified by a deployed Aquarius `durationMs`, or from concurrency with its own measured
-> RPC-tolerance test. Which is why `AQUARIUS_POOLS` holds one entry while 339 further Aquarius pools
-> are scorable, and why those 339 are published on the registry under `coverage.ts`'s
-> `awaiting-capacity` status rather than being quietly omitted.
+> **This is the last target the budget can buy — _per invocation_.** A sixth needs 60,000ms of
+> attempts, which **is** the `maxDuration` ceiling, so it cannot come from the budget. It now
+> comes from **sharding**: the ceiling is five targets in ONE invocation, and `n` invocations carry
+> `5n`. See "Sharding the registry across invocations" below. A lower attempt timeout and a higher
+> concurrency remain the two ways to raise the _per-shard_ five, and both still need their own
+> deployed measurement.
 
 **Wall-clock from a developer machine is recorded but is NOT the claim.** A full local cycle on
 2026-08-29 ran all five targets in 36.7s — `etherfuse` 7,524ms, `aquarius-xlm-usdc` 8,929ms,
 `kinetic` 7,659ms, `yieldblox` 7,042ms, `blend` 5,545ms — from Nigeria against the public endpoint,
 which is exactly the measurement CLAUDE.md forbids making an RPC-load claim from. The _ratio_ is the
 usable part: Aquarius is ~1.6x Blend on the same machine in the same session, and Blend is 5,545ms
-locally against 2,412–3,049ms deployed. **A deployed per-target `durationMs` for `aquarius-xlm-usdc`
-is still owed**, and is the first thing to read off the cron route's response after this ships —
-`curl -X POST … /api/cron/run-indexer` returns it. If it exceeds the 10,000ms attempt timeout, the
-target will retry and eventually record a failed run rather than silently mis-score, and the answer
-is to reduce the adapter's request count, not to raise the budget again.
+locally against 2,412–3,049ms deployed.
+
+#### The post-batching deployed reading, 2026-08-30
+
+**Every registered target now has a deployed `durationMs`, including `aquarius-xlm-usdc` — the one
+this section previously recorded as owed.** Three cycles `curl`ed from the production cron route,
+concurrency 1, all five targets, after the ledger-entry batching landed:
+
+| Run       | kinetic  | yieldblox | etherfuse | blend    | aquarius-xlm-usdc | `totalMs`  | HTTP wall  |
+| --------- | -------- | --------- | --------- | -------- | ----------------- | ---------- | ---------- |
+| 1         | 5,230ms  | 3,011ms   | 2,612ms   | 2,053ms  | 1,546ms           | 15,392ms   | 17.9s      |
+| 2         | 5,341ms  | 3,158ms   | 2,569ms   | 1,932ms  | 1,638ms           | 15,576ms   | 16.7s      |
+| 3         | 5,462ms  | 2,861ms   | 2,198ms   | 2,203ms  | 1,620ms           | 15,280ms   | 16.4s      |
+| **Range** | 5.2–5.5s | 2.9–3.2s  | 2.2–2.6s  | 1.9–2.2s | **1.5–1.6s**      | 15.3–15.6s | 16.4–17.9s |
+
+**Aquarius is the FASTEST target in the registry, at roughly a quarter of what it was estimated to
+cost.** The estimate above put an Aquarius attempt at 5.5–8.7s, derived from its 37-request count
+against an observed 150–235ms per request — and that estimate is what justified _not_ lowering
+`STENION_ATTEMPT_TIMEOUT_MS` to buy the fifth target. The real figure is 1.5–1.6s. Two things it
+got wrong: batching collapsed the per-key `getLedgerEntries` reads (28 calls per cycle to 9), and
+requests inside one attempt are not serialized at the modelled rate. **The lesson is symmetric with
+the concurrency incident, pointing the other way** — a request count is machine-independent and a
+duration is not, so neither substitutes for the deployed reading.
+
+**Batching absorbed the entire fifth target.** Against the 2026-08-29 four-target cycles
+(`totalMs` 15,482 / 15,627 / 16,759), the five-target post-batching cycles run in 15,280–15,576ms:
+one more target, same wall clock. Per-target it is a 15–25% reduction across the lending adapters
+(yieldblox 3.7–3.9s → 2.9–3.2s, etherfuse 3.0–3.2s → 2.2–2.6s, blend 2.4–3.0s → 1.9–2.2s), with
+kinetic flat at 5.2–5.5s — it reads 27 RPC calls and almost none of them were ledger-entry reads.
+
+**This does not raise the five-target ceiling, and it is important to say why.** `cycleFeasibility`
+is sized on `STENION_ATTEMPT_TIMEOUT_MS`, not on measured durations: it asks whether every target
+could get one _full_ attempt if it needed one, which is a worst-case guarantee and not a throughput
+estimate. Faster targets would justify **lowering the attempt timeout**, which is the dial that
+would raise the ceiling — and the headroom is thinner than the durations suggest, because
+`DEFAULT_RATE_LIMIT_POLICY` lets one attempt spend up to 2,000ms waiting out `429`s _inside_ that
+cap. The slowest healthy attempt is kinetic at 5.5s, so 5.5 + 2.0 = 7.5s must fit; at the current
+10,000ms that leaves 2.5s of margin, and at 8,400ms it would leave 0.9s. **Not lowered here** —
+that is its own flagged decision with its own measurement, and sharding made it unnecessary.
+
+**`SLOWEST_FIRST` in `indexer/src/cycle.ts` tracks this table** and was updated with it. Two targets
+(`etherfuse`, `aquarius-xlm-usdc`) had been absent from that list and were therefore ordered as
+assumed-slowest; both are now placed by measurement, and `aquarius-xlm-usdc` sorts **last**. At
+concurrency 1 the ordering cannot change a cycle's makespan — the sum is the sum — but it decides
+the makespan the moment concurrency rises.
+
+### Sharding the registry across invocations
+
+**The problem this solves.** `cycleFeasibility()` requires every registered target to get one full
+attempt inside the cycle budget — `ceil(targets / concurrency) * ATTEMPT_TIMEOUT_MS <= BUDGET_MS`.
+At the shipped defaults that is **five targets per invocation**, and all three dials behind it are
+pinned by something measured (see the table above). The sixth target could not come from a dial, so
+it comes from running **more than one invocation**.
+
+`POST /api/cron/run-indexer?shard=<i>&totalShards=<n>` scores only shard `i`. Both parameters are
+optional and **both-or-neither**: sending neither scores the whole registry, so the job that existed
+before sharding keeps working untouched. A half-configured job (`?shard=1` alone) and a job that
+could never match anything (`?shard=2&totalShards=2`) are both **400s**, not quiet no-ops — a shard
+spec that silently scores nothing would return a cheerful `ran: 0` forever while a slice of the
+registry went stale.
+
+**How a target is assigned.** `selectShard` (in `indexer/src/cycle.ts`) sorts every target by
+`(FNV-1a hash of its id, id)` and deals that order round-robin across the shards. Two properties
+matter and both are tested:
+
+- **Balanced to within one target, always.** That is what makes `n` shards worth `5n` slots. The
+  simpler `hash(id) % totalShards` was measured against this registry and rejected: today's five
+  slugs land **4 and 1** across two shards, so the second invocation would buy four slots instead
+  of five, and at ten targets a two-way split is more likely than not to put six in one shard and
+  be infeasible outright.
+- **Independent of input order.** The deal is sorted by hash, so re-measuring a target and changing
+  `SLOWEST_FIRST` cannot reshuffle the shards. `selectShard` also preserves the order of the list
+  it is handed, so a shard of a slowest-first registry is still slowest-first — ordering and
+  sharding compose without either knowing the other ran.
+
+**What it costs, stated plainly:** registering a sixth target can move an existing target to a
+different shard. That is safe here, and the reason is specific rather than general — **nothing in
+this system is keyed by shard.** A run record is keyed by protocol; a failure streak is _derived_
+by `decideAlert` from that protocol's own `risk_scores` rows rather than counted in a per-cycle
+counter; staleness is per protocol. A target that changes shard is scored a few minutes earlier or
+later and nothing observes the move. `cycle.test.ts` pins it: the same target reaches a
+byte-identical alert decision sharded and unsharded. **If some future state is ever keyed by shard,
+this is the decision to revisit.**
+
+#### Deploy config: the cron-job.org jobs
+
+**`n` shards means `n` jobs**, each every 5 minutes, each hitting the same URL with its own
+`shard`. All of them carry the same `Authorization: Bearer <CRON_SECRET>` header and the same
+`POST` method as the single job does today. This is infra config in the cron-job.org dashboard —
+**not in this repo** — so this table is the only place the mapping is written down.
+
+| Shards | Jobs | URL each job POSTs                                                                  | Minutes each job fires                 |
+| ------ | ---- | ----------------------------------------------------------------------------------- | -------------------------------------- |
+| 1      | 1    | `/api/cron/run-indexer` (no parameters)                                             | `0,5,10,…`                             |
+| 2      | 2    | `…?shard=0&totalShards=2`<br>`…?shard=1&totalShards=2`                              | `0,5,10,…`<br>`1,6,11,…`               |
+| 3      | 3    | `…?shard=0&totalShards=3`<br>`…?shard=1&totalShards=3`<br>`…?shard=2&totalShards=3` | `0,5,10,…`<br>`1,6,11,…`<br>`2,7,12,…` |
+
+**The jobs must be STAGGERED, not simultaneous, and this is load-bearing rather than tidy.**
+`STENION_CYCLE_CONCURRENCY` bounds parallel targets _within_ one invocation and has no idea another
+invocation exists. Two shards fired on the same minute put two request streams on
+`mainnet.sorobanrpc.com` and reproduce the concurrency-2 `429` incident from a direction the config
+cannot see or prevent. A cycle is ~16s, so a one-minute offset is ample.
+
+**Freshness is unchanged, and that is the point of using `n` jobs rather than one rotating job.**
+Each shard runs every 5 minutes, so every target is still scored every 5 minutes —
+`STENION_HEALTH_STALE_MINUTES` (30) and `STENION_ALERT_THRESHOLD` (4 cycles ≈ 20 min) keep their
+meanings with nothing to retune. ROADMAP.md previously costed sharding as "a five-minute cadence
+over three shards is a fifteen-minute worst case per market"; that is the cost of the _rotating
+single job_ shape, and it is not the shape that shipped.
+
+**Alerting becomes one POST per shard invocation**, where it was one per cycle. Each shard batches
+its own targets' alerts into a single webhook POST, so an RPC-wide outage that takes out the whole
+registry now reads as `n` messages covering disjoint sets rather than one covering everything.
+That was weighed and accepted: streak state is per protocol and cannot double-count or reset (see
+above), and the split actually _helps_ the `MAX_MESSAGE_CHARS` truncation problem `alerts.ts`
+documents, because each message carries fewer alerts.
+
+**When `totalShards` changes, every target may move.** That is inherent to any modular assignment
+and is a deliberate infra change, not something that happens on a code deploy. Nothing breaks — the
+next cycle scores the same registry through a different split.
+
+#### Verifying a sharded rotation after deploy
+
+Coverage is the thing to check, and it is checkable: run every shard by hand and confirm the union
+of what they scored is the registry, with nothing scored twice.
+
+```bash
+# 2 shards. Each call returns `shard`, `totalShards` and the per-target `durationMs`.
+for i in 0 1; do
+  curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" \
+    "https://stenion.vercel.app/api/cron/run-indexer?shard=$i&totalShards=2"
+  echo
+done
+```
+
+Three things to read off the responses:
+
+1. **Coverage** — the `results[].id` values across all shards must be the five registered targets,
+   each appearing exactly once. Zero occurrences means a target is going stale; two means it is
+   writing two rows a cycle and will cross the alert threshold in half the intended time.
+2. **`totalMs` per shard**, comfortably under `STENION_CYCLE_BUDGET_MS` (50,000). A shard of 2–3
+   targets should land near 6–10s given the per-target durations above.
+3. **A 400 on a bad spec** — `?shard=2&totalShards=2` must be refused rather than returning
+   `ran: 0`.
+
+Run the shards **sequentially**, as above, not in parallel: firing them together is the same
+mistake the staggering rule exists to prevent, and it will show up as `429`s rather than as
+anything about sharding.
 
 ### Caching and rate limits
 

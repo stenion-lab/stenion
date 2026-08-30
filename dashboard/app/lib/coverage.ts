@@ -132,7 +132,9 @@ export type CoverageStatus =
    * rulebook applies, the reads work, the number would be as true of these
    * markets as of the one that is scored — and a scoring cycle runs inside
    * Vercel Hobby's 60s `maxDuration`, which at the shipped attempt timeout and
-   * concurrency allows five targets in total.
+   * concurrency allows five targets per invocation. Sharding splits the registry
+   * across several invocations, so the number is `5 x the shards provisioned`;
+   * the shards beyond the first are cron jobs nobody has created yet.
    *
    * Deliberately NOT folded into `below-size-floor`, which would be a lie twice
    * over: `dex` has no size floor (methodology/dex.md, "Size floor: none, and
@@ -144,11 +146,15 @@ export type CoverageStatus =
    * imply a finding about the markets it lists.
    *
    * THE WAY OUT IS TRACKED IN ROADMAP.md, not here. All three scheduling dials
-   * are at their limits (budget at 50s against a 60s hard ceiling, concurrency
-   * pinned at 1 by the RPC 429 incident, attempt timeout already lowered once),
-   * so nothing can be registered — of any category — until sharding or staggered
-   * scheduling lands. This status is what that looks like from the registry;
-   * ROADMAP.md's blocker is what it looks like as work.
+   * are still at their limits (budget at 50s against a 60s hard ceiling,
+   * concurrency pinned at 1 by the RPC 429 incident, attempt timeout already
+   * lowered once) — but the ceiling those dials set is now PER INVOCATION rather
+   * than per registry: sharding has shipped, so capacity is bought by running
+   * more cron jobs instead of by moving a dial. Nothing further is registered
+   * yet because those jobs are infra config outside this repo, which is why this
+   * status still has members. It is now "no slot has been provisioned" rather
+   * than "no slot can exist". This status is what that looks like from the
+   * registry; ROADMAP.md is what it looks like as work.
    */
   | 'awaiting-capacity';
 

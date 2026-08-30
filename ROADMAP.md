@@ -217,70 +217,71 @@ commitment — priorities shift as protocols launch and as the project finds fun
   invariant holds for links as well as for the registry; `/coverage` with no id redirects to the
   registry filtered to those entries.
 
+- **Sharding the registry across cron invocations.** The five-target ceiling was a per-_invocation_
+  ceiling, and it still is; what changed is that the registry no longer has to fit in one
+  invocation. `POST /api/cron/run-indexer?shard=<i>&totalShards=<n>` scores one shard, `n`
+  cron-job.org jobs cover the registry, and `cycleFeasibility()` is evaluated against each shard's
+  own subset — so `n` shards carry `5n` targets.
+
+  **Freshness is NOT the cost, and this roadmap previously said it would be.** The entry that
+  tracked this blocker costed sharding as "a five-minute cadence over three shards is a
+  fifteen-minute worst case per market", and that is true of the shape it assumed — one job
+  rotating through subsets on successive invocations. The shape that shipped is `n` **separate
+  jobs, each every 5 minutes, staggered by a minute**. Every target is still scored every 5
+  minutes, so `STENION_HEALTH_STALE_MINUTES` and `STENION_ALERT_THRESHOLD` keep their meanings and
+  nothing had to be retuned. The staggering is load-bearing rather than tidy:
+  `STENION_CYCLE_CONCURRENCY` bounds parallel targets _within_ an invocation and cannot see another
+  invocation, so simultaneous shards would reproduce the concurrency-2 `429` incident from a
+  direction the config does not control.
+
+  **Assignment is a balanced deal, not `hash % n`, and that was the one real decision.** Targets
+  are sorted by `(hash(id), id)` and dealt round-robin, which keeps shards within one target of
+  each other — the property that makes `n` shards worth `5n` slots. The alternative that keeps a
+  target's shard a function of its own slug alone was measured against this registry and rejected:
+  today's five slugs land **4 and 1** across two shards. The cost of the balanced deal is that
+  registering a target can move an existing one between shards, which is safe here for a specific
+  reason — **nothing is keyed by shard.** Streaks are derived per protocol from `risk_scores`
+  (`alerts.ts`, "WHY DERIVE"), so a move cannot reset or double-count one; `cycle.test.ts` pins
+  that a target reaches a byte-identical alert decision sharded and unsharded.
+
+  **Alerting is one POST per shard invocation** where it was one per cycle — an RPC-wide outage now
+  reads as `n` messages covering disjoint target sets. Weighed and accepted; it also relieves the
+  `MAX_MESSAGE_CHARS` truncation `alerts.ts` documents.
+
+  Job table, staggering, and the full reasoning:
+  [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md) "Sharding the
+  registry across invocations". **The mechanism is shipped; the capacity is not bought until the
+  extra cron-job.org jobs exist**, which is infra config outside this repo.
+
 - **The full stack:** on-chain adapters → indexer → Postgres → API → dashboard, deployed as a single
   Vercel project with external (cron-job.org) scheduling. See [`architecture/index.md`](architecture/index.md).
 
 ## Planned
 
 Roughly in priority order, but not committed to dates. **The first item gates every other item that
-adds a market**, so it is first in fact and not only in presentation.
+adds a market** — it used to be a hard blocker with no mechanism behind it; it is now a matter of
+provisioning the shards that sharding made possible.
 
-- **BLOCKER — the registry is full at five targets. Nothing can be registered until scheduling is
-  solved.** Not "the next dex market"; **nothing**. Not a sixth Aquarius pool, not a fifth Blend
-  market, not a new adapter for a protocol that clears every gate in
-  [`TAXONOMY.md`](TAXONOMY.md) and passes every per-pool verification there is. Verification is no
-  longer what decides whether a market gets scored — capacity is, and capacity is exhausted.
+- **Register more markets — the mechanism exists, the jobs do not yet.** Sharding shipped (see
+  "Shipped" above), so the registry ceiling is now `5 x <number of cron-job.org jobs>` rather than a
+  flat five. Nothing further is registered yet, because buying the capacity means adding those jobs
+  in the cron-job.org dashboard — infra config outside this repo, with the job table in
+  [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md).
 
-  **Why it is a hard stop and not a tight fit.** One scoring cycle is one serverless invocation.
-  `cycleFeasibility()` requires that every registered target can get one full attempt inside the
-  cycle budget:
+  **The per-shard five is unchanged and still pinned by measurement.** Within one invocation,
+  `ceil(targets / concurrency) * STENION_ATTEMPT_TIMEOUT_MS <= STENION_CYCLE_BUDGET_MS` still holds
+  at 50,000ms / 10,000ms / concurrency 1, and all three dials are where the deployed measurements
+  put them:
 
-  ```
-  ceil(targets / concurrency) * STENION_ATTEMPT_TIMEOUT_MS <= STENION_CYCLE_BUDGET_MS
-  ```
+  | Dial                         | Where it is | Why it has not moved                                                                                                                                                                                                                                                                       |
+  | ---------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `STENION_CYCLE_BUDGET_MS`    | 50,000      | 60,000 is the `maxDuration` ceiling itself, so the next step up is the cliff. Sharding is what replaced raising it.                                                                                                                                                                        |
+  | `STENION_CYCLE_CONCURRENCY`  | 1           | Shipped at 2 and reverted the same day when `mainnet.sorobanrpc.com` started refusing the target behind the burst. Raising it needs a **deployed** RPC-tolerance measurement, never an estimate.                                                                                           |
+  | `STENION_ATTEMPT_TIMEOUT_MS` | 10,000      | The 2026-08-30 reading makes a case for lowering it — the slowest healthy attempt is kinetic at 5.5s — but `DEFAULT_RATE_LIMIT_POLICY` spends up to 2,000ms of that cap waiting out `429`s, leaving thinner margin than the durations suggest. Its own decision, with its own measurement. |
 
-  At the shipped defaults — concurrency **1**, attempt timeout **10,000ms** — five targets need
-  `5 × 10,000 = 50,000ms`, and `STENION_CYCLE_BUDGET_MS` is **50,000**. It fits exactly, with zero
-  headroom. A sixth target needs **60,000ms**, and that is not a budget that can be granted: it
-  **is** Vercel Hobby's `maxDuration`, which cannot be raised on this tier, and a cycle killed
-  mid-flight can leave one market scored and another neither scored nor recorded as failed — worse
-  than a clean failure, which is the whole reason a budget below the ceiling exists.
-
-  **All three dials are already at their limit, and each is pinned by something measured:**
-
-  | Dial                         | Where it is | Why it cannot move                                                                                                                                                                                                                                 |
-  | ---------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `STENION_CYCLE_BUDGET_MS`    | 50,000      | Raised from 42,000 against three `curl`ed deployed cycles. 60,000 is the `maxDuration` ceiling itself, so the next step up is the cliff.                                                                                                           |
-  | `STENION_CYCLE_CONCURRENCY`  | 1           | Shipped at 2 and reverted the same day when `mainnet.sorobanrpc.com` — free, shared, keyless — started refusing the target behind the burst. Raising it again needs a **deployed** RPC-tolerance measurement, never an estimate.                   |
-  | `STENION_ATTEMPT_TIMEOUT_MS` | 10,000      | Already lowered 15s → 10s to buy the fourth target. The registry's most expensive attempt (an Aquarius pool: 37 requests against Blend's 16) sits at an estimated 5.5–8.7s deployed, so a lower cap would time out a healthy target on a slow day. |
-
-  **What actually unblocks it: sharding, or staggered scheduling.** Not a config change — a change
-  to what a cron invocation _is_. Today one POST scores every target; the fix is that a POST scores
-  a _subset_, with successive invocations covering the registry in rotation. Two shapes are worth
-  costing:
-
-  - **Sharding by target group** — the dex targets and the lending targets on separate invocations,
-    each with its own budget. Cheapest to reason about; makes the cron-job.org side two jobs instead
-    of one.
-  - **Round-robin over a stable order** — each invocation takes the `N` targets least recently
-    scored. Scales to any registry size without a second job, at the cost of making a protocol's
-    freshness a function of how many protocols there are.
-
-  **Whichever wins, `/api/v1/health` is the precondition**, and it already exists. A target skipped
-  by a shard has to go _visibly_ stale rather than silently — `staleMinutes` climbing on the status
-  page is the difference between "we score this every 15 minutes now" and "we quietly stopped
-  scoring this". The staleness threshold has to move with the cadence, or the endpoint starts
-  reporting `degraded` for a schedule working as designed.
-
-  **The cost is honest and has to be stated up front:** sharding trades freshness for coverage. A
-  five-minute cadence over three shards is a fifteen-minute worst case per market, and
-  "continuous, on-chain-derived risk scoring" is the pitch. That trade is a decision, not an
-  implementation detail — it is the reason this is a tracked blocker rather than a task someone
-  picks up quietly.
-
-  Until it is made, the honest answer to "can you score X?" is **yes, and it will not be
-  registered** — which is exactly what `coverage.ts`'s `awaiting-capacity` status says on the
-  registry, for the 339 Aquarius markets already in that position. See
+  So the honest answer to "can you score X?" is now **yes, once there is a job for its shard** —
+  which is what `coverage.ts`'s `awaiting-capacity` status says on the registry for the 339
+  Aquarius markets in that position. See
   [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md) for the deployed
   measurements behind every number above.
 
@@ -428,10 +429,8 @@ adds a market**, so it is first in fact and not only in presentation.
   only under the division rule that has been removed. An unmeasured target sorts first, i.e. is
   assumed slowest.
 
-  Still open: **sharding targets across cron invocations** — written here as a contingency for RPC
-  rate limits, and promoted since to the blocker at the top of this section. It is no longer a last
-  resort held in reserve: with the budget at its ceiling and concurrency pinned at 1, it is the only
-  remaining way to register anything at all.
+  **Resolved by sharding**, which shipped: the budget-and-concurrency ceiling is per invocation,
+  and the registry is now split across several. See the sharding entry under "Shipped".
 
 - **An `AbortSignal` through `Adapter.fetchRawData`.** The per-attempt timeout is currently _soft_ —
   it races the attempt against a timer and abandons the loser rather than cancelling it, because no

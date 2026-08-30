@@ -119,7 +119,7 @@ These override any default behavior and are enforced in code and review:
 ## Code conventions
 
 - **Package manager: pnpm**, via corepack. The version is pinned by the `packageManager` field in
-  the root `package.json` (currently `pnpm@9.15.9`), and that field is the **only** place it is
+  the root `package.json` (currently `pnpm@11.24.0`), and that field is the **only** place it is
   declared: CI's `pnpm/action-setup` step deliberately passes no `version:` input and reads the same
   field, so a contributor's local pnpm and CI's cannot diverge. Corepack enforces it — with
   `corepack enable` done, `pnpm --version` inside this repo reports the pinned version regardless of
@@ -163,6 +163,24 @@ These override any default behavior and are enforced in code and review:
   into agreeing on a number nobody reviewed. It is a state to leave, not to live in — `dex` passed
   through it — admitted as a factor set, weighted in a later review — and **no category is in it
   today**; it is kept for the next one admitted the same way.
+  **A weight is a plain `number`, and branding it was considered and REJECTED.** The proposal was a
+  `FactorWeight` nominal type constructible only inside `weights.ts`, threaded through
+  `RiskFactor.weight`, so that a `weight: 0.33` literal in an adapter would not typecheck. It is
+  rejected on three findings, all checked rather than argued: (a) the hazard it was aimed at —
+  reading `.weight` off an unweighted declaration — is **already a compile error through every
+  spelling**, including the unwrapped alias, because `as const satisfies` gives `LENDING_FACTORS` /
+  `DEX_FACTORS` the literal declaration type rather than `CategoryFactors`, so an alias inherits the
+  narrowing instead of laundering it (`TS2339`, verified); (b) the residual hazard, a bare literal,
+  is caught by a **test** and not merely by review — each adapter's `score.test.ts` pins every
+  factor's `weight` against the declaration table, so a literal fails `pnpm test`; and (c) the brand
+  cannot cross the storage boundary honestly — `HistoryRow`/`ProtocolDetailRow` describe a
+  `risk_scores` row as pg returns it, jsonb deserializes to a plain `number`, and asserting a brand
+  there would reintroduce exactly the read-side lie that `as RiskFactorMap` → `as FactorMap` removed.
+  A brand that tests must be able to construct is a speed bump, not a closed hole: the 13 synthetic
+  weights in `core`/`db`/`indexer` exist to exercise values no real table has. **What would revisit
+  it:** an adapter shipping a weight literal that the pin tests did not catch — i.e. a real escape,
+  not a hypothetical one. Adding a category, or one sitting in `pendingWeights`, is **not** grounds
+  on its own; that case is (a), and it already fails to compile.
 - **An adapter is a FOLDER of four files, and only `index.ts` is API.** `adapters/<protocol>/`
   holds `types.ts` (mainnet wiring, constants, raw on-chain shape, options), `fetch.ts` (everything
   touching RPC/Horizon, plus decoders, behind one `fetch*` entry point), `score.ts` (the five
@@ -244,7 +262,13 @@ former transitional aliases were removed and now 404, and the versioning policy 
 in-process (no HTTP hop). The indexer is triggered by a secret-gated cron route
 (`POST /api/cron/run-indexer`), which an external cron-job.org job POSTs to every 5 minutes with
 `Authorization: Bearer <CRON_SECRET>`. That schedule lives in the cron-job.org dashboard, **not in
-this repo** — there is no workflow or `vercel.json` `crons` entry to find. `@stenion/api` is legacy —
+this repo** — there is no workflow or `vercel.json` `crons` entry to find. The route takes an
+optional `?shard=<i>&totalShards=<n>`, scoring one shard of the registry so that **one job per
+shard** covers more targets than one invocation can (both params or neither; a half-configured or
+unmatchable spec is a 400, never a quiet no-op). Which target lands where is `selectShard` in
+`indexer/src/cycle.ts`; the job table and the **staggering rule** — shards must not fire on the
+same minute, or they put concurrent load on the RPC that `STENION_CYCLE_CONCURRENCY` cannot see —
+are in `architecture/deploy-architecture.md`. `@stenion/api` is legacy —
 kept but not deployed. Env vars: `DATABASE_URL` (Neon pooled), `STENION_RPC_URL`,
 `STENION_HORIZON_URL`, `CRON_SECRET`, plus optional `STENION_ALERT_WEBHOOK_URL` (indexer failure
 alerts; unset = off), `STENION_RATE_LIMIT_SALT`, and the retry/threshold, rate-limit and
@@ -263,18 +287,28 @@ rule here is that **caching must never mask `lastRunAt`/`lastRunStatus`**, which
 computed per response from the body rather than being a constant.
 
 > **The 60s ceiling is load-bearing.** `maxDuration` is capped at 60 on Vercel's Hobby tier and
-> cannot be raised. The indexer's retry budget (`STENION_CYCLE_BUDGET_MS`, default 42s) exists to
+> cannot be raised. The indexer's retry budget (`STENION_CYCLE_BUDGET_MS`, default 50s) exists to
 > stay inside it: a cycle killed mid-flight can leave one protocol scored and the other neither
 > scored nor recorded as failed, which is worse than a clean failure. Raise the budget only against
 > observed cycle durations, never by arithmetic alone.
 >
 > **The budget is NOT divided per target, and must not go back to being.** Targets run through a
-> bounded worker pool (`STENION_CYCLE_CONCURRENCY`, default 2) and each gets the end of the budget
+> bounded worker pool (`STENION_CYCLE_CONCURRENCY`, default 1) and each gets the end of the budget
 > less one full attempt reserved per queued wave (`targetDeadline`). A rule where a target's
 > deadline shrinks as the registry grows can fail protocols that already work — that is what
 > `budgetMs / targetCount` did, and it was removed. The replacement's ceiling is the explicit
 > condition `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs`, checked by
 > `cycleFeasibility()` and warned about every cycle, never discovered by adding a pool.
+>
+> **That ceiling is PER INVOCATION, and the registry is not.** It allows five targets at the
+> shipped defaults; `runCycle` only ever receives one shard's targets, so the condition is checked
+> against that subset and `n` shards carry `5n`. Capacity is bought by provisioning another
+> cron-job.org job, **not** by raising the budget — 60s of attempts is the `maxDuration` ceiling
+> itself. Shard assignment is a balanced deal over `(hash(id), id)` rather than `hash % n`,
+> because balance is what makes `n` shards worth `5n`; the cost is that registering a target can
+> move an existing one between shards, which is safe **only because nothing is keyed by shard** —
+> streaks are derived per protocol from `risk_scores`. If anything ever is keyed by shard, that
+> is the decision to revisit.
 >
 > **`STENION_CYCLE_CONCURRENCY` ships at 1, and raising it is a measurement question, not a
 > judgement call.** It shipped at 2 and was reverted the same day when the free shared public RPC
