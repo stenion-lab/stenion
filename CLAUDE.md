@@ -119,7 +119,7 @@ These override any default behavior and are enforced in code and review:
 ## Code conventions
 
 - **Package manager: pnpm**, via corepack. The version is pinned by the `packageManager` field in
-  the root `package.json` (currently `pnpm@9.15.9`), and that field is the **only** place it is
+  the root `package.json` (currently `pnpm@11.24.0`), and that field is the **only** place it is
   declared: CI's `pnpm/action-setup` step deliberately passes no `version:` input and reads the same
   field, so a contributor's local pnpm and CI's cannot diverge. Corepack enforces it — with
   `corepack enable` done, `pnpm --version` inside this repo reports the pinned version regardless of
@@ -163,6 +163,24 @@ These override any default behavior and are enforced in code and review:
   into agreeing on a number nobody reviewed. It is a state to leave, not to live in — `dex` passed
   through it — admitted as a factor set, weighted in a later review — and **no category is in it
   today**; it is kept for the next one admitted the same way.
+  **A weight is a plain `number`, and branding it was considered and REJECTED.** The proposal was a
+  `FactorWeight` nominal type constructible only inside `weights.ts`, threaded through
+  `RiskFactor.weight`, so that a `weight: 0.33` literal in an adapter would not typecheck. It is
+  rejected on three findings, all checked rather than argued: (a) the hazard it was aimed at —
+  reading `.weight` off an unweighted declaration — is **already a compile error through every
+  spelling**, including the unwrapped alias, because `as const satisfies` gives `LENDING_FACTORS` /
+  `DEX_FACTORS` the literal declaration type rather than `CategoryFactors`, so an alias inherits the
+  narrowing instead of laundering it (`TS2339`, verified); (b) the residual hazard, a bare literal,
+  is caught by a **test** and not merely by review — each adapter's `score.test.ts` pins every
+  factor's `weight` against the declaration table, so a literal fails `pnpm test`; and (c) the brand
+  cannot cross the storage boundary honestly — `HistoryRow`/`ProtocolDetailRow` describe a
+  `risk_scores` row as pg returns it, jsonb deserializes to a plain `number`, and asserting a brand
+  there would reintroduce exactly the read-side lie that `as RiskFactorMap` → `as FactorMap` removed.
+  A brand that tests must be able to construct is a speed bump, not a closed hole: the 13 synthetic
+  weights in `core`/`db`/`indexer` exist to exercise values no real table has. **What would revisit
+  it:** an adapter shipping a weight literal that the pin tests did not catch — i.e. a real escape,
+  not a hypothetical one. Adding a category, or one sitting in `pendingWeights`, is **not** grounds
+  on its own; that case is (a), and it already fails to compile.
 - **An adapter is a FOLDER of four files, and only `index.ts` is API.** `adapters/<protocol>/`
   holds `types.ts` (mainnet wiring, constants, raw on-chain shape, options), `fetch.ts` (everything
   touching RPC/Horizon, plus decoders, behind one `fetch*` entry point), `score.ts` (the five
