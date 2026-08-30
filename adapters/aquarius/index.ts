@@ -4,14 +4,14 @@
 // and that extra is internal wiring rather than API.
 //
 // THE FIRST NON-LENDING ADAPTER. It implements `Adapter<AquariusRawData, 'dex'>`
-// — the same two parameters both lending adapters take, because since #104 the
-// factor map is DERIVED from the category rather than named here. Declaring
+// — the same two parameters both lending adapters take, because the factor map
+// is DERIVED from the category rather than named here. Declaring
 // `'dex'` is what makes `computeRiskFactors` owe exactly `adminKeySafety` and
 // `assetControlSafety`; there is no third parameter to get wrong, which is the
 // whole point of the revision (see `Adapter` in `core/src/adapter.ts`).
 //
-// REGISTERED SINCE #104, through `AQUARIUS_POOLS` in ./types.ts — one entry, the
-// XLM/USDC constant-product pool. The indexer iterates that list exactly as it
+// REGISTERED, through `AQUARIUS_POOLS` in ./types.ts — one entry, the XLM/USDC
+// constant-product pool. The indexer iterates that list exactly as it
 // iterates `BLEND_POOLS`; this class still scores whichever pool it is handed,
 // and the list is the only place a market is named.
 
@@ -131,7 +131,7 @@ export class AquariusAdapter implements Adapter<AquariusRawData, 'dex'> {
   /**
    * The pool's live restrictions — published beside the score and never in it.
    *
-   * The byte-identical-factor-map invariant this rests on (#15) is asserted in
+   * The byte-identical-factor-map invariant this rests on is asserted in
    * ./score.test.ts: no kill switch and no emergency-mode flag may move any
    * value `computeRiskFactors` produces.
    */

@@ -32,13 +32,14 @@
 // a decode regression that the three tidy Fixed reserves happen to survive shows
 // up in YieldBlox's eight.
 //
-// EVERY ADAPTER SCORES AGAIN as of #103, AquariusAdapter included. Targets still
+// EVERY ADAPTER SCORES AGAIN, AquariusAdapter included. Targets still
 // carry `scorable`, and it still means "this category has a published rulebook a
 // number can come from" rather than anything about the pool — an unscorable
 // target captures the raw shape and skips the factor summary rather than being
 // excluded from fixtures. It is kept because the two-step category admission
 // TAXONOMY.md requires (factor set, then weight table) puts the next category
-// through the same state Aquarius passed through in #101.
+// through the same state Aquarius passed through before its scoring half
+// landed.
 //
 // Requires the workspace to be built (`pnpm --filter @stenion/adapters build`)
 // and STENION_RPC_URL / STENION_HORIZON_URL in the repo-root .env or the shell.
@@ -170,7 +171,7 @@ async function main() {
     // FIVE POOLS BEHIND ONE ADAPTER. Four are chosen to exercise every branch
     // the fetch layer has, because live Aquarius state is otherwise monotonous —
     // all 340 pools share one admin posture, so a single fixture would freeze
-    // almost nothing. The fifth is the REGISTERED market (#104), which is a
+    // almost nothing. The fifth is the REGISTERED market, which is a
     // different job: those four are branch coverage and this one is the pool the
     // public registry actually publishes a number about.
     //

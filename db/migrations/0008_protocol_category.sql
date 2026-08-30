@@ -7,7 +7,7 @@
 -- does, silently: a DEX score would land in these same tables, be selected by
 -- the same leaderboard query, and be ranked against a lending score by an
 -- `ORDER BY safety_score DESC` that has no way to know the two numbers were
--- computed from different factors under different weights. Issue #76.
+-- computed from different factors under different weights.
 --
 -- WHY IT IS ON **BOTH** TABLES, which looks like duplication and is not.
 --

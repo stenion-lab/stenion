@@ -202,14 +202,15 @@ export function loadConfig(cwd: string = process.cwd()): IndexerConfig {
     // nothing healthy exceeds 6.1s there (architecture/), so 15s was sized
     // against a developer machine's much slower path to the RPC. The shorter cap
     // is what makes a SEQUENTIAL cycle feasible at all, which is how the 429
-    // incident was resolved without giving back the deadline guarantee #68
-    // bought.
+    // incident was resolved without giving back the deadline guarantee that
+    // removing budget division bought.
     //
-    // UNCHANGED BY THE FIRST DEX TARGET (#104), and that is a decision. Lowering
+    // UNCHANGED BY THE FIRST DEX TARGET, and that is a decision. Lowering
     // it to 8.4s would have bought the fifth target inside the old 42s budget
     // without touching anything else — and it was rejected, because an Aquarius
     // attempt is the longest one in the registry. Its request count is 22 RPC +
-    // 15 Horizon (measured in #101, machine-independent) against Kinetic's 27
+    // 15 Horizon (counted from the adapter's own reads, machine-independent)
+    // against Kinetic's 27
     // RPC, and the deployed function's observed rate is 150-235ms per request,
     // which puts an Aquarius attempt somewhere in 5.5-8.7s. A cap inside that
     // range would time out a healthy target on a slow day. The budget moved
@@ -220,7 +221,8 @@ export function loadConfig(cwd: string = process.cwd()): IndexerConfig {
     // and retry where it used to succeed first time. Raise it in .env if that
     // bites; production is the case this default is sized for.
     attemptTimeoutMs: optionalPositiveInt('STENION_ATTEMPT_TIMEOUT_MS', 10_000),
-    // 50s, raised from 42s in #104 — AGAINST OBSERVED DEPLOYED DURATIONS, which
+    // 50s, raised from 42s to fit the first dex target — AGAINST OBSERVED
+    // DEPLOYED DURATIONS, which
     // is the only condition under which CLAUDE.md permits raising it, and the
     // condition the previous comment here set ("raise it once the Vercel logs
     // show real headroom"). Three cycles curl'ed from the deployed cron route on
@@ -265,7 +267,7 @@ export function loadConfig(cwd: string = process.cwd()): IndexerConfig {
     // Dropping to 1 costs nothing structural: each target's deadline no longer
     // depends on the target count either way (see cycle.ts `targetDeadline`), so
     // this is a throughput-vs-RPC-pressure dial and not a correctness one. The
-    // budget-division bug #68 fixed does NOT come back at 1.
+    // budget-division bug does NOT come back at 1.
     cycleConcurrency: optionalPositiveInt('STENION_CYCLE_CONCURRENCY', 1),
     // 4 cycles ≈ 20 minutes at the 5-minute cadence. One blip must not page
     // anyone, and a score 20 minutes stale is not an emergency — false pages are

@@ -64,7 +64,7 @@ export interface IndexTarget {
     /**
      * The factor map the adapter produced, at the category-agnostic `FactorMap`
      * — the shape the persisted `RunRecord.factors` accepts, and not lending's
-     * five-key `RiskFactorMap` (#104). This wrapper's whole job is to erase an
+     * five-key `RiskFactorMap`. This wrapper's whole job is to erase an
      * adapter's specific types so a heterogeneous list shares one run loop, and
      * the factor map is one more of them: `toTarget` below is generic over it,
      * so the precision is kept where it means something (inside the adapter) and
@@ -86,7 +86,7 @@ export interface IndexTarget {
 /**
  * Bind one adapter to the run pipeline, whatever category it scores.
  *
- * GENERIC OVER THE CATEGORY TOO (#104). It used to be `toTarget<T>(adapter:
+ * GENERIC OVER THE CATEGORY TOO. It used to be `toTarget<T>(adapter:
  * Adapter<T>)`, and `Adapter<T>` defaults `TCategory` to the whole
  * `ProtocolCategory` union — which was fine while lending was the only category
  * with an adapter, and stopped being fine the moment the factor map became a
@@ -263,7 +263,7 @@ export function cycleWaves(queued: number, concurrency: number): number {
  * the fastest target is last — but a list whose comment cites numbers that no
  * longer hold is a list nobody can check, so it tracks the measurement.
  *
- * DELIBERATELY NOT UPDATED FOR ETHERFUSE (#65). It has no deployed measurement,
+ * DELIBERATELY NOT UPDATED FOR ETHERFUSE. It has no deployed measurement,
  * so it is not on this list and `orderByLatency` therefore treats it as the
  * slowest and runs it first — the conservative default this list is built to
  * allow. Add it here only once the cron route's per-target `durationMs` says

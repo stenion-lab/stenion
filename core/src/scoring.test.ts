@@ -64,7 +64,7 @@ function repoFile(name: string): string {
 /**
  * One category's rulebook file.
  *
- * METHODOLOGY.md is a FOLDER now — #77's per-category sections became
+ * METHODOLOGY.md is a FOLDER now — its per-category sections became
  * per-category files — and a category's file is named for the category:
  * `lending` lives in `methodology/lending.md`. Reading only that file rather
  * than the whole folder is the same scoping the section parser below already
@@ -195,8 +195,8 @@ const factor = (value: number, weight: number): RiskFactor => ({
  * The assertions below iterate this rather than naming `lending`, because every
  * one of them is a statement about *a category's* rulebook and nothing in any of
  * them is lending-specific. Naming one category was correct while one was
- * published; it stopped being correct in #102, when `dex` gained a table that
- * would otherwise have been pinned against nothing.
+ * published; it stopped being correct when `dex` gained a table that would
+ * otherwise have been pinned against nothing.
  */
 const publishedCategories = () =>
   PROTOCOL_CATEGORIES.filter((c) => CATEGORY_FACTORS[c].status === 'published');
@@ -232,7 +232,7 @@ describe("scoreFactors — agreement with each published category's rulebook", (
   //
   // THEY ITERATE THE PUBLISHED CATEGORIES RATHER THAN NAMING `lending`. Nothing
   // in any of them was ever lending-specific; naming one category was simply
-  // correct while one had a weight table. `dex` gained one in #102, and a table
+  // correct while one had a weight table. `dex` gained one, and a table
   // nobody pins against `CATEGORY_FACTORS` is exactly the drift these tests
   // exist to catch — so the loop is what stops the next category being published
   // in the document and never checked against the code.
@@ -349,8 +349,8 @@ describe("scoreFactors — agreement with each published category's rulebook", (
     // for. The `## <Label>` section itself is still required of it, because the
     // factor set, the anchors and the rejected alternatives are exactly what
     // such a category HAS been reviewed on. Both categories are `published`
-    // today — `dex` was weighted in #102 — so the skip below currently skips
-    // nothing.
+    // today — `dex`'s weight table has been reviewed — so the skip below
+    // currently skips nothing.
     for (const category of PROTOCOL_CATEGORIES) {
       const section = docCategorySection(category);
       assert.ok(section.trim().length > 0, `${category}'s section in METHODOLOGY.md is empty`);
@@ -390,8 +390,8 @@ describe("scoreFactors — agreement with each published category's rulebook", (
 
   it('names, in the doc, exactly the factors the category declares', () => {
     // The Gate-6 pin that survives a category having no weights: whatever else
-    // is deferred, the factor SET is what #100 admitted, and the document and
-    // `CATEGORY_FACTORS` must agree on it. Lending's version of this check runs
+    // is deferred, the factor SET is what the category was admitted on, and the
+    // document and `CATEGORY_FACTORS` must agree on it. Lending's version of this check runs
     // through its weight table (above); a pendingWeights category has no table,
     // so the keys are read from the `#### N. \`factorKey\`` headings its section
     // uses to introduce each factor — the same headings lending's section uses.
@@ -727,8 +727,8 @@ describe('excludedComponent — the disclosure for what the filter set aside', (
 // WHY THESE EXIST: the previous selection kept a single reserve and, comparing
 // with `<=`, kept whichever came LAST in iteration order. That produced a
 // detail string that reads like a diagnosis but is really a tie-break, and it
-// caused a real misdiagnosis — issue #45 was filed claiming K2's oracleSafety
-// of 0 traced to a $4.00 dust reserve, when a reserve thirteen times larger was
+// caused a real misdiagnosis — a bug report claimed K2's oracleSafety of 0
+// traced to a $4.00 dust reserve, when a reserve thirteen times larger was
 // equally dead and simply never named. The score was always right; only the
 // explanation was wrong. These pin the explanation.
 // ---------------------------------------------------------------------------

@@ -20,9 +20,10 @@
 // hole, so the tests below assert the OPPOSITE property for such a category —
 // that no factor in it carries a weight at all — and neither state can be
 // reached by accident. **Both categories are `published` today**: `dex` was
-// admitted in #100 and weighted in #102, so the pendingWeights assertions
-// currently iterate an empty set. They are kept for the next category admitted
-// the same way, which is the only reason the state exists.
+// admitted as a factor set and weighted in a later review, so the
+// pendingWeights assertions currently iterate an empty set. They are kept for
+// the next category admitted the same way, which is the only reason the state
+// exists.
 //
 // WHAT IS NOT TESTED HERE: whether lending's weights match METHODOLOGY.md. That
 // pinning lives in `scoring.test.ts`, which parses the published table out of
@@ -109,8 +110,8 @@ describe('the per-category factor declarations', () => {
 
   it('carries no weight at all on a pendingWeights category', () => {
     // THE ASSERTION THE STATE EXISTS FOR, and it iterates nothing today: `dex`
-    // was admitted as a factor SET (#100) and weighted in its own review (#102),
-    // so no category is pendingWeights any more. It is kept rather than deleted
+    // was admitted as a factor SET and weighted in a review of its own, so no
+    // category is pendingWeights any more. It is kept rather than deleted
     // because the state is how TAXONOMY.md admits a category — factor set first,
     // weight table second — and the next one will pass through it. A `0`, a
     // `0.33` placeholder, or a half-filled table would be indistinguishable from
@@ -145,8 +146,9 @@ describe('the per-category factor declarations', () => {
 
   it('keeps both categories published', () => {
     // Pins the two current answers so that flipping either is a deliberate,
-    // reviewed act rather than a one-word edit. `dex` flipped in #102, and it
-    // could only flip together with its weight table in methodology/dex.md —
+    // reviewed act rather than a one-word edit. `dex` flipped when its weight
+    // table was reviewed, and it could only flip together with that table in
+    // methodology/dex.md —
     // scoring.test.ts parses that table and pins it against this map, in both
     // directions, so a status change with no published table fails there.
     assert.equal(CATEGORY_FACTORS.lending.status, 'published');
@@ -154,9 +156,10 @@ describe('the per-category factor declarations', () => {
   });
 
   it("declares dex's two factors, sharing adminKeySafety's key with lending", () => {
-    // Open question B on #100, resolved as: one name for one question, computed
-    // from different data on each side (Aquarius's seven roles plus an upgrade
-    // deadline; a lending pool's single admin's signer set). The shared key is
+    // The open question when `dex` was admitted, resolved as: one name for one
+    // question, computed from different data on each side (Aquarius's seven
+    // roles plus an upgrade deadline; a lending pool's single admin's signer
+    // set). The shared key is
     // what stops the taxonomy fragmenting into synonyms — and it is NOT a
     // comparability claim, since scores are not comparable across categories
     // whatever the keys are called.
@@ -204,7 +207,7 @@ describe('the per-category factor declarations', () => {
 });
 
 // ---------------------------------------------------------------------------
-// `FactorMapFor` — the type-level half, checked by `pnpm typecheck` (#104)
+// `FactorMapFor` — the type-level half, checked by `pnpm typecheck`
 //
 // THIS BLOCK ASSERTS NOTHING AT RUNTIME AND IS NOT MEANT TO. Everything below
 // is a type declaration, erased before Node's test runner sees the file. What
@@ -212,9 +215,9 @@ describe('the per-category factor declarations', () => {
 // together — so a `@ts-expect-error` here fails the build if the error it names
 // ever stops happening.
 //
-// It is the guard on the property #104's review added: which factors a category
-// scores is declared once, in `CATEGORY_FACTORS`, and an adapter derives its map
-// from the category it declares rather than naming one. Before that, both of the
+// It is the guard on the property the `Adapter` review added: which factors a
+// category scores is declared once, in `CATEGORY_FACTORS`, and an adapter
+// derives its map from the category it declares rather than naming one. Before that, both of the
 // mismatches below compiled — verified, not supposed — which is what turned the
 // review from "affirm" into "revise".
 // ---------------------------------------------------------------------------
@@ -227,7 +230,7 @@ interface ProbeRaw {
  * A dex adapter that tries to publish LENDING's factor map.
  *
  * This is the spelling that used to compile: `Adapter<ProbeRaw, 'dex',
- * RiskFactorMap>` was legal, because the third parameter #103 added was never
+ * RiskFactorMap>` was legal, because the third parameter `TFactors` was never
  * related to the category. Now the map is `FactorMapFor<'dex'>` and an
  * incompatible override is what it is — an error, which the directive above
  * requires to be present.

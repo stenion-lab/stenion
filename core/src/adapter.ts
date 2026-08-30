@@ -8,34 +8,35 @@ import type { FactorMapFor } from './weights';
  * to — a required method, a changed signature, a new error model.
  *
  * 1 — fetchRawData / computeRiskFactors / score.
- * 2 — adds the required `operationalState(raw)` method (issue #15). Required,
+ * 2 — adds the required `operationalState(raw)` method. Required,
  *     not optional, deliberately: an optional method is one every future adapter
  *     can quietly skip, which is precisely the retrofit debt that decision was
  *     made to stop accumulating. This constant exists so that forcing every
  *     implementor to update is a labelled event rather than a silent break, and
  *     this is the first time it has been used for one.
  * 3 — adds the required `metadata.category` field and a `TCategory` parameter
- *     that scopes `operationalState`'s vocabulary to it (issue #76). Required
+ *     that scopes `operationalState`'s vocabulary to it. Required
  *     for the same reason `operationalState` was: a protocol with no category is
  *     not a protocol we know how to score, and an optional field would default
  *     the first adapter of every future category into lending's rulebook. Every
  *     implementor must name its category; nothing infers one.
  *
  * 4 — the factor map is DERIVED from `TCategory` rather than named by the
- *     adapter (issue #104). #103 had added a third parameter, `TFactors`,
- *     defaulted to `RiskFactorMap`, to make the first `dex` adapter compile —
- *     and recorded itself as unreviewed. This is that review, and it revised
- *     rather than affirmed: nothing tied `TFactors` to `TCategory`, so
+ *     adapter. The version before it had a third parameter, `TFactors`,
+ *     defaulted to `RiskFactorMap`, to make the first `dex` adapter compile,
+ *     and it was left explicitly unreviewed. The review revised rather than
+ *     affirmed it: nothing tied `TFactors` to `TCategory`, so
  *     `Adapter<Raw, 'dex', RiskFactorMap>` compiled (a dex adapter scored on
  *     lending's five) and so did a map of invented keys. Both were checked, not
  *     supposed. `computeRiskFactors`/`score` now speak `FactorMapFor<TCategory>`
  *     — the key set `CATEGORY_FACTORS` declares for that category — so an
  *     adapter cannot publish factors its own rulebook does not name.
  *
- *     BUMPED, where #103's addition deliberately was not, because the bar is
- *     "a change adapters must react to" and this is one: an adapter that spelled
- *     three parameters must drop the third. A defaulted parameter nobody had to
- *     name was not; a removed one that someone did name is.
+ *     BUMPED, where the defaulted `TFactors` parameter deliberately was not,
+ *     because the bar is "a change adapters must react to" and this is one: an
+ *     adapter that spelled three parameters must drop the third. A defaulted
+ *     parameter nobody had to name was not; a removed one that someone did name
+ *     is.
  */
 export const ADAPTER_INTERFACE_VERSION = 4 as const;
 
@@ -74,13 +75,13 @@ export const ADAPTER_INTERFACE_VERSION = 4 as const;
  * returning lending's five is a compile error, and so is inventing a key no
  * rulebook has.
  *
- * That is the #104 revision of #103's `TFactors` parameter, and the reason for
+ * That is the revision of the earlier `TFactors` parameter, and the reason for
  * it is that the parameter did not connect to anything. `RiskFactorMap` is
  * **lending's** map — `Record<RiskFactorType, …>`, its five keys fixed — and
  * `dex` scores `adminKeySafety` and `assetControlSafety`, so the first
- * non-lending adapter could not implement this interface at all; #103 opened it
- * up with a defaulted parameter to get that adapter compiling and flagged the
- * decision as unreviewed. The review found what the parameter allowed:
+ * non-lending adapter could not implement this interface at all; `TFactors`
+ * opened it up with a defaulted parameter to get that adapter compiling, and the
+ * decision was flagged as unreviewed. The review found what the parameter allowed:
  * `Adapter<Raw, 'dex', RiskFactorMap>` and `Adapter<Raw, 'dex', { madeUpSafety }>`
  * both compiled, because nothing related the two parameters. Deriving relates
  * them.

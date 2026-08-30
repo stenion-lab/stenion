@@ -4,8 +4,8 @@
  * This is the third category of published data, alongside scored factors and
  * the static Findings notes (see CLAUDE.md). It exists because pause/frozen
  * state is a real, changing, on-chain reading that changes how a score should
- * be read, but which nothing on chain lets us grade. Issue #15 resolved that
- * tension by publishing it rather than scoring it; the full reasoning is in
+ * be read, but which nothing on chain lets us grade. That tension was resolved
+ * by publishing it rather than scoring it; the full reasoning is in
  * METHODOLOGY.md, "Operational state is published, never scored".
  *
  * WHY THIS FILE IS NOT IN scoring.ts. `scoring.ts` is the shared *rulebook* —
@@ -108,7 +108,7 @@ export type DexOperation = (typeof DexOperation)[keyof typeof DexOperation];
  * words or skip the method, and both are worse than saying which words belong to
  * which rulebook.
  *
- * TWO ENTRIES. `dex` (#100) is the second, and it registered exactly what this
+ * TWO ENTRIES. `dex` is the second, and it registered exactly what this
  * design said it would: its own operation names here, its own canonical ordering
  * and its own classifier beside the lending ones below. **Not one lending
  * operation was renamed, added or removed** — renaming one would rewrite
@@ -190,10 +190,10 @@ export const OperationalLevel = {
   /**
    * Cannot trade; depositing and withdrawing both work.
    *
-   * ADDED FOR `dex` (#100, open question C), and the reason it is a new rung
-   * rather than a reused one. Aquarius's `kill_swap` halts the market while
-   * leaving both LP paths open — there is no `kill_withdraw` in any of the three
-   * pool wasms — so a swap-killed pool is genuinely open on entry and on exit.
+   * ADDED FOR `dex`, and the reason it is a new rung rather than a reused one.
+   * Aquarius's `kill_swap` halts the market while leaving both LP paths open —
+   * there is no `kill_withdraw` in any of the three pool wasms — so a swap-killed
+   * pool is genuinely open on entry and on exit.
    * Under the ladder as it stood it would have classified `Active`: true about
    * exit, and wrong about the market. `blocked: ['swap']` carried the fact, but
    * `level` is the field a reader scans, and a dead market reading "active" is

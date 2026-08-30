@@ -138,7 +138,8 @@ the top.** A minimum over an empty set is `0`, not `100`.
   [market-size floor](methodology/lending.md#the-market-size-floor), as `below-size-floor`. Neither renders a
   numeral.
 - **(c)** `operationalState` ([`core/src/operational-state.ts`](core/src/operational-state.ts),
-  decided in #15): which user operations a market's contracts are currently refusing, published
+  the decision recorded in `methodology/publishing-rules.md`): which user operations a market's
+  contracts are currently refusing, published
   beside the name and score everywhere either appears. Both adapter suites assert a **byte-identical
   factor map** across every restricted state their protocol can be in, so route (c) cannot leak into
   a score.
@@ -257,7 +258,7 @@ is comparable only with one produced by the same rulebook — each category is s
 factors under its own weights, so the same numeral in two categories is two different measurements
 wearing the same digits.
 
-**Lending as the worked example — the enforcement is structural, not a rendering habit** (#78):
+**Lending as the worked example — the enforcement is structural, not a rendering habit:**
 
 - [`dashboard/app/lib/registry-query.ts`](dashboard/app/lib/registry-query.ts)'s `buildRegistryView`
   publishes **`RankedCategoryGroup[]` and no flat ranked array**. There is nowhere for a
@@ -294,7 +295,7 @@ second table, or a dashboard constant.
 
 **Lending as the worked example.** The chain runs adapter → `CATEGORY_FACTORS` → the published
 rulebook, with no hand-written copy in it. Adapters read `LENDING_FACTORS.<factor>.weight` and never
-a literal (#77). `scoring.test.ts` then parses `methodology/<category>.md` rather than restating
+a literal. `scoring.test.ts` then parses `methodology/<category>.md` rather than restating
 it: it locates
 a category's section by `## ${CATEGORY_FACTORS[category].label}` — the heading text comes from the
 code, so the document and the code cannot disagree about what the section is called — and pulls the
@@ -333,7 +334,7 @@ stored rows under new rules.
 
 **Lending as the worked example.** `METHODOLOGY_VERSIONS` in
 [`core/src/category.ts`](core/src/category.ts) is a `Record<ProtocolCategory, number>` — a category
-added to `PROTOCOL_CATEGORIES` is a compile error until it has an entry (#76), the same shape
+added to `PROTOCOL_CATEGORIES` is a compile error until it has an entry, the same shape
 `CATEGORY_FACTORS` and `CATEGORY_OPERATIONS` use. Counters are independent and each starts at 1, so
 **the integer alone does not identify a rulebook**: the indexer stamps `risk_scores.category` beside
 `risk_scores.methodology_version`, resolved from the target's own category, and an adapter has no say

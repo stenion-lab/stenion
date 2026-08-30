@@ -27,7 +27,7 @@ describe('the oracle-legibility precondition', () => {
   // upgrade that changes the answer shows up as a changed hash rather than as a
   // mysteriously flipped assertion.
   //
-  // WHAT THEY SHOW, and it is the finding that decided issue #69: the four
+  // WHAT THEY SHOW, and it is the finding that decided the precondition: the four
   // non-aggregator pools do NOT share one "plain SEP-40" shape. They are four
   // different contracts with four different wasm hashes doing four different
   // things — a bridge, a proxy, a deterministic bond pricer, a feed registry.
@@ -75,7 +75,7 @@ describe('the oracle-legibility precondition', () => {
     {
       pool: 'Etherfuse (scored)',
       wasm: '65300c006c7b0151043be891f1f99872a25b20529d929db38fdfed96af966ff2',
-      note: 'a third aggregator build — registered by #65 on the strength of this row',
+      note: 'a third aggregator build — registered on the strength of this row',
       methods: [
         '__constructor',
         'add_asset',
@@ -229,7 +229,8 @@ describe('isMissingContractFunction separates a verdict from a run failure', () 
 
   it('does not treat a transient RPC failure as a scorability verdict', () => {
     // THE ASYMMETRY THAT MATTERS. A 429 from the shared public RPC is the exact
-    // failure #68's revert was caused by, and it arrives on these same calls. If
+    // failure the concurrency revert was caused by, and it arrives on these same
+    // calls. If
     // it were read as "this oracle publishes no max_age", one bad five-minute
     // cycle would declare a working pool permanently ungradable.
     for (const message of [

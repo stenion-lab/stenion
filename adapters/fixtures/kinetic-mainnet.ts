@@ -5,7 +5,7 @@
 // why before committing — that is the entire point of this file.
 //
 // ONE HAND-EDITED FIELD, and this is the record of it. `KineticReserveRaw` gained
-// a required `flags` block on 2026-08-25 (issue #15, per-reserve gating state).
+// a required `flags` block on 2026-08-25, carrying per-reserve gating state.
 // This fixture was NOT regenerated to absorb it — snapshot.test.ts explains why
 // at length: it is the only captured state in which the pre-minimum-size-filter
 // defect is visible, and a re-capture would have destroyed that evidence for an

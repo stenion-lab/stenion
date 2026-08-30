@@ -2,8 +2,8 @@
 //
 // WHY IT EXISTS. Both adapters have always read a pause/frozen signal and
 // neither ever fed it into a score, so a halted market and a fully open one
-// published the same number with nothing to tell them apart. Issue #15 resolved
-// that by publishing the state rather than grading it — because nothing on chain
+// published the same number with nothing to tell them apart. That was resolved
+// by publishing the state rather than grading it — because nothing on chain
 // separates an admin freezing a pool to contain a threat from an admin
 // abandoning it, and because the two protocols' restricted states are not the
 // same shape (Blend never blocks a withdrawal at any status; K2's pause blocks

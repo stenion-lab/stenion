@@ -543,7 +543,7 @@ describe('minimum-size filter — excluding everything still cannot publish 100'
 // The score was never wrong; the explanation was. With two feeds both pinned at
 // freshness 0, the old detail named whichever came last in iteration order — so
 // a $4.00 dust reserve was reported as the cause while a reserve thirteen times
-// larger, equally dead, went unmentioned. That is what issue #45 was filed on.
+// larger, equally dead, went unmentioned. That is what the bug report was filed on.
 // oracleSafety is deliberately NOT size-filtered (METHODOLOGY.md §2), so the
 // only fix owed here is an honest explanation.
 // ---------------------------------------------------------------------------
@@ -587,7 +587,8 @@ describe('oracleSafety — a tie names every reserve in it', () => {
   });
 
   it('scores the dust reserve exactly as it scores any other (§2 is not size-filtered)', async () => {
-    // Pinning the decision from #45: a reserve too small for §4/§5 still counts
+    // Pinning the decision that came out of it: a reserve too small for §4/§5
+    // still counts
     // in full here. §2 measures a vulnerability, and a stale price on a dust
     // reserve is an open door rather than a small room — nothing stops an
     // attacker supplying into it at the stale price. Size-filtering §2 would
@@ -607,7 +608,7 @@ describe('oracleSafety — a tie names every reserve in it', () => {
   });
 });
 
-describe('oracleSafety — per-feed price ages are disclosed (#47/#48)', () => {
+describe('oracleSafety — per-feed price ages are disclosed', () => {
   it('shows both ends of the spread, not just the graded worst', async () => {
     // The finding this exists for: one oracle, one batchAdapter source, some
     // feeds seconds-fresh and others untouched for hours. A reader seeing
@@ -639,7 +640,7 @@ describe('oracleSafety — per-feed price ages are disclosed (#47/#48)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Operational state (issue #15) — published, never scored
+// Operational state — published, never scored
 // ---------------------------------------------------------------------------
 
 describe('operationalState — router pause and per-reserve flags', () => {

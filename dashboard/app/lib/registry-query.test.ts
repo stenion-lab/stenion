@@ -24,14 +24,14 @@ import type { CoverageEntry } from './coverage.ts';
 // thing to them. Everything below exists to make that structural rather than a
 // thing review has to keep noticing.
 //
-// #78 adds the same rule one level up: a `#` numeral is scoped to ONE category,
+// The same rule applies one level up: a `#` numeral is scoped to ONE category,
 // and no ordering may put two categories' scores in one ranked sequence, because
 // two numbers are comparable only when the same rulebook produced them.
 
 /**
  * A category no entry actually carries.
  *
- * `dex` IS ON THE BOARD SINCE #104, and this constant stayed anyway.
+ * `dex` IS ON THE BOARD NOW, and this constant stayed anyway.
  *
  * It was written when `dex` was a registered rulebook with nothing scored under
  * it, so that the cross-category rules would be enforced before the day a second
@@ -114,8 +114,8 @@ const MIXED_BOARD = [
 ];
 
 /**
- * The board as it actually is since #104: four lending markets and one `dex`
- * one, with the real category values and roughly the real scores.
+ * The board as it actually is: four lending markets and one `dex` one, with the
+ * real category values and roughly the real scores.
  *
  * SEPARATE FROM `MIXED_BOARD` rather than replacing it — see FUTURE_CATEGORY for
  * why the unknown-category case is still worth having. This one answers a
@@ -141,7 +141,8 @@ const COVER = [
  *
  * For assertions about MEMBERSHIP only — which entries are ranked and which are
  * not. It is deliberately not a thing the view itself hands out: flattening the
- * groups is exactly the cross-category sequence #78 exists to prevent, and doing
+ * groups is exactly the cross-category sequence the grouping exists to prevent,
+ * and doing
  * it here, in a test, is where that is harmless.
  */
 const allRanked = (view: RegistryView): LeaderboardEntry[] =>
@@ -618,11 +619,11 @@ describe('buildRegistryView — a ranking is scoped to one category', () => {
   });
 });
 
-describe('buildRegistryView — one category renders exactly what it did before #78', () => {
+describe('buildRegistryView — one category renders exactly what a flat list did', () => {
   // THE REGRESSION GUARD. `ProtocolCategory` has one member in the real data, so
   // grouping must be invisible today: one block, ordered and numbered exactly as
-  // the flat list was. The expectation is recomputed from the pre-#78 primitives
-  // (partitionScored, then sortRanked), which is the code the old flat `ranked`
+  // the flat list was. The expectation is recomputed from the pre-grouping
+  // primitives (partitionScored, then sortRanked), which is the code the old flat `ranked`
   // field was built by — so this compares against the old behaviour rather than
   // against a copy of the new one.
   for (const sort of REGISTRY_SORTS) {
@@ -635,7 +636,7 @@ describe('buildRegistryView — one category renders exactly what it did before 
       assert.deepEqual(
         view.rankedGroups[0]?.entries,
         legacyRanked,
-        'the single block must be the flat pre-#78 list, entry for entry',
+        'the single block must be the flat pre-grouping list, entry for entry',
       );
       assert.deepEqual(
         view.rankedGroups[0]?.entries.map((_, i) => i + 1),
@@ -643,7 +644,7 @@ describe('buildRegistryView — one category renders exactly what it did before 
         'numbered 01..n exactly as before',
       );
 
-      // And the rest of the view, which #78 was not allowed to touch.
+      // And the rest of the view, which grouping was not allowed to touch.
       assert.equal(view.mode, sort === 'name' ? 'alphabetical' : 'ranked');
       assert.equal(view.showRank, sort === 'score-desc');
       assert.deepEqual(view.counts, {
@@ -680,7 +681,7 @@ describe('buildRegistryView — one category renders exactly what it did before 
   });
 });
 
-describe('buildRegistryView — the live two-category board (#104)', () => {
+describe('buildRegistryView — the live two-category board', () => {
   it('renders two ranked blocks, each numbered from 01 within itself', () => {
     const view = buildRegistryView(LIVE_MIXED_BOARD, COVER, params());
 

@@ -20,8 +20,8 @@
  * every place a new category must be registered.
  *
  * TWO ENTRIES, BOTH PUBLISHED. `lending` has been weighted since the module
- * existed; `dex` was admitted in #100 as a factor set with **no weights at all**
- * and was weighted in #102, its own review — because a weight is a type-(b)
+ * existed; `dex` was admitted as a factor set with **no weights at all** and was
+ * weighted afterwards, in a review of its own — because a weight is a type-(b)
  * judgment call under TAXONOMY.md Gate 1 and guessing one alongside the factor
  * set would have buried the guess inside a different argument. The intermediate
  * state that made that two-step admission expressible is still here and still
@@ -99,8 +99,8 @@ export interface UnweightedFactorDeclaration {
  * score for the plain reason that no adapter can construct a weighted `dex`
  * factor without a weight to put in it.
  *
- * `pendingWeights` is a state to LEAVE, not to live in. #102 did exactly that
- * for `dex`, and **no category is in it today**. It is kept because the next
+ * `pendingWeights` is a state to LEAVE, not to live in. `dex` left it when its
+ * weight table was reviewed, and **no category is in it today**. It is kept because the next
  * category will be admitted the same way — factor set first, weight table
  * second — and because the alternative to a typed intermediate state is an
  * untyped one: a placeholder weight, indistinguishable from a reviewed value the
@@ -148,8 +148,8 @@ export const CATEGORY_FACTORS = {
   },
 
   /**
-   * The DEX rulebook's two factors, admitted by #100 and weighted by #102. Both
-   * halves are published in `methodology/dex.md`.
+   * The DEX rulebook's two factors, admitted as a set first and weighted in a
+   * second review. Both halves are published in `methodology/dex.md`.
    *
    * **THE TWO WEIGHTS ARE AN UNVALIDATED JUDGMENT CALL** — TAXONOMY.md Gate 1
    * type (b), labelled here and in `methodology/dex.md`'s "Factor weights"
@@ -204,8 +204,8 @@ export const CATEGORY_FACTORS = {
    * on each side (Aquarius's seven named roles plus a two-step upgrade deadline;
    * a lending pool's single admin's signer set). Two categories using one name
    * for one question is what stops the taxonomy fragmenting into synonyms, so
-   * the key is shared and the computation is not. Open question B on #100,
-   * resolved this way and recorded in `dex.md` so it is not re-litigated. Note
+   * the key is shared and the computation is not. That question was resolved
+   * this way and is recorded in `dex.md` so it is not re-litigated. Note
    * that a shared KEY is not a comparability claim: the values are not
    * comparable across categories, for the same reason the overall scores are
    * not.
@@ -234,7 +234,7 @@ export const CATEGORY_FACTORS = {
 export const LENDING_FACTORS = CATEGORY_FACTORS.lending.factors;
 
 /**
- * Dex's declarations, unwrapped — what the Aquarius adapter reads (#103).
+ * Dex's declarations, unwrapped — what the Aquarius adapter reads.
  *
  * The same convenience `LENDING_FACTORS` is, and the same non-claim: it is the
  * object `CATEGORY_FACTORS.dex.factors` names, not a copy of it, so there is one
@@ -243,11 +243,11 @@ export const LENDING_FACTORS = CATEGORY_FACTORS.lending.factors;
  * source of the numbers `methodology/dex.md` publishes, which is precisely what
  * this module was added to stop.
  *
- * TWO KEYS, AND `adminKeySafety` IS ALSO ONE OF LENDING'S. That is #100's open
- * question B, resolved as one name for one question computed from different data
- * on each side. It is not a comparability claim: a `dex` `adminKeySafety` of 60
- * and a `lending` one of 60 were produced by different rules from different
- * quantities, exactly as the two categories' overall scores were.
+ * TWO KEYS, AND `adminKeySafety` IS ALSO ONE OF LENDING'S. That was an open
+ * question when `dex` was admitted, resolved as one name for one question
+ * computed from different data on each side. It is not a comparability claim: a
+ * `dex` `adminKeySafety` of 60 and a `lending` one of 60 were produced by
+ * different rules from different quantities, exactly as the two categories' overall scores were.
  */
 export const DEX_FACTORS = CATEGORY_FACTORS.dex.factors;
 
@@ -261,7 +261,7 @@ export const DEX_FACTORS = CATEGORY_FACTORS.dex.factors;
  * out here would be a second declaration of which factors `dex` scores — the
  * thing this module exists to prevent, one level up from the weights.
  *
- * A NAME, NOT A SECOND DEFINITION, since #104 — `Adapter` derives the same type
+ * A NAME, NOT A SECOND DEFINITION — `Adapter` derives the same type
  * from the category it is given, so this alias is what an adapter's own code
  * calls the map it builds rather than what the interface demands of it.
  *
@@ -278,11 +278,11 @@ export type DexFactorMap = FactorMapFor<'dex'>;
  * The factor map a category's rulebook declares — factor keys to factors, with
  * `null` for one that genuinely doesn't apply.
  *
- * THIS IS WHAT `Adapter` SCORES, AND IT IS DERIVED, NEVER CHOSEN (#104). The
- * interface used to take the factor map as a third type parameter that an
- * adapter picked for itself, defaulted to lending's `RiskFactorMap`. That was
- * added in #103 to make the first `dex` adapter compile and was explicitly
- * recorded as unreviewed; the review found the hole it leaves. Both of these
+ * THIS IS WHAT `Adapter` SCORES, AND IT IS DERIVED, NEVER CHOSEN. The interface
+ * used to take the factor map as a third type parameter that an adapter picked
+ * for itself, defaulted to lending's `RiskFactorMap`. That was added to make the
+ * first `dex` adapter compile and was explicitly recorded as unreviewed; the
+ * review found the hole it leaves. Both of these
  * compiled:
  *
  *   class Wrong implements Adapter<Raw, 'dex', RiskFactorMap>       // dex, scored on lending's five
@@ -304,10 +304,10 @@ export type DexFactorMap = FactorMapFor<'dex'>;
  * reading of "some category's adapter" and is what `toTarget` erases into
  * `FactorMap`.
  *
- * (The #103 decision record predicted this spelling would break `Adapter<unknown>`
- * by resolving to a map requiring every category's keys at once. It does not —
- * checked, not assumed, and the record is corrected in
- * `architecture/monorepo-layout.md`.)
+ * (The decision record for the `TFactors` parameter predicted this spelling
+ * would break `Adapter<unknown>` by resolving to a map requiring every
+ * category's keys at once. It does not — checked, not assumed, and the record is
+ * corrected in `architecture/monorepo-layout.md`.)
  */
 export type FactorMapFor<C extends ProtocolCategory> = {
   [K in C]: Record<keyof (typeof CATEGORY_FACTORS)[K]['factors'] & string, RiskFactor | null>;

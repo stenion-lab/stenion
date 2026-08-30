@@ -3,7 +3,7 @@
 --
 -- WHY THIS IS A COLUMN AND NOT A FACTOR. Both adapters have always read a
 -- pause/frozen signal (Blend's `PoolConfig.status`, K2's `router.is_paused()`)
--- and neither ever fed it into a score. Issue #15 resolved that deliberately:
+-- and neither ever fed it into a score. That was resolved deliberately:
 -- the state is published beside the score and never graded, because nothing on
 -- chain distinguishes an admin freezing a pool in response to a threat from an
 -- admin abandoning it, and the two protocols' states are not even the same

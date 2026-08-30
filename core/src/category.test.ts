@@ -81,12 +81,12 @@ describe('the category registry', () => {
     // category a deliberate act with a failing test attached, rather than a
     // one-word edit that silently widens what the platform claims to score.
     // Adding a member here without a `methodology/<category>.md` section for it
-    // is the failure mode TAXONOMY.md (#79) exists to prevent — and it is
+    // is the failure mode TAXONOMY.md exists to prevent — and it is
     // `scoring.test.ts`'s "publishes a rulebook section for every category"
     // that actually catches it.
     //
     // ORDER IS THE ORDER THEY WERE ADMITTED, not alphabetical: `lending` first
-    // because every scored market runs under it, `dex` second (#100).
+    // because every scored market runs under it, `dex` second.
     assert.deepEqual([...PROTOCOL_CATEGORIES], ['lending', 'dex']);
   });
 

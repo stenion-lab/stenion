@@ -193,6 +193,161 @@ rules") from entirely different on-chain data on each side. **That is not a comp
 A `dex` `adminKeySafety` of 60 and a `lending` one of 60 were produced by different rules from
 different quantities, exactly as the two overall scores were.
 
+#### A `dex` response in full
+
+The same endpoint, on the one `dex` market: `category` is `"dex"`, `factors` has **two** keys, and
+their weights sum to 1 exactly as lending's five do. `history` is truncated to one entry as above;
+everything else is verbatim.
+
+```bash
+curl https://stenion.vercel.app/api/v1/protocol/aquarius-xlm-usdc
+```
+
+```json
+{
+  "id": "aquarius-xlm-usdc",
+  "name": "Aquarius XLM/USDC",
+  "chain": "stellar",
+  "category": "dex",
+  "adapter": "AquariusAdapter",
+  "logo": null,
+  "contractId": "CA6PUJLBYKZKUEKLZJMKBZLEKP2OTHANDEOWSFF44FTSYLKQPIICCJBE",
+  "site": "https://aqua.network",
+  "docs": "https://docs.aqua.network",
+  "deployedOn": null,
+  "safetyScore": 24,
+  "computedAt": "2026-08-30T08:30:12.798Z",
+  "factors": {
+    "adminKeySafety": {
+      "value": 10,
+      "detail": "role posture binds at 10 — pool: worst of 7 roles — RewardsAdmin single-key GCXYKA… (1 signer(s), high-threshold 0), 200 op(s) in 30d; SystemFeeAdmin single-key GB57YD… (1 signer(s), high-threshold 0), 200 op(s) in 30d | router: worst of 7 roles — RewardsAdmin single-key GCXYKA… (1 signer(s), high-threshold 0), 200 op(s) in 30d; SystemFeeAdmin single-key GB57YD… (1 signer(s), high-threshold 0), 200 op(s) in 30d",
+      "weight": 0.55,
+      "components": [
+        {
+          "id": "rolePosture",
+          "label": "Privileged role posture",
+          "value": 10,
+          "detail": "pool: worst of 7 roles — RewardsAdmin single-key GCXYKA… (1 signer(s), high-threshold 0), 200 op(s) in 30d; SystemFeeAdmin single-key GB57YD… (1 signer(s), high-threshold 0), 200 op(s) in 30d | router: worst of 7 roles — RewardsAdmin single-key GCXYKA… (1 signer(s), high-threshold 0), 200 op(s) in 30d; SystemFeeAdmin single-key GB57YD… (1 signer(s), high-threshold 0), 200 op(s) in 30d"
+        },
+        {
+          "id": "upgradeWindow",
+          "label": "Upgrade reaction window",
+          "value": 100,
+          "detail": "pool UpgradeDeadline = 0 — no code change scheduled (FutureWASM ae0da5a8… matches the running code) | router UpgradeDeadline = 0 — no code change scheduled (FutureWASM 06f4207b… matches the running code)"
+        },
+        {
+          "id": "timelockDuration",
+          "label": "Timelock duration",
+          "value": null,
+          "detail": "ADMIN_ACTIONS_DELAY is a compile-time constant with no getter, confirmed absent from all four deployed wasms, so the LENGTH of the upgrade window is not readable from the contract. The deadline and the current time are, which is why the window is graded as a state and never as a fraction remaining."
+        },
+        {
+          "id": "emergencyBypass",
+          "label": "Emergency Admin bypass",
+          "value": null,
+          "detail": "Aquarius's own response to Certora H-01: \"In the case of system vulnerability fixes, delay may be bypassed by the Emergency Admin role.\" So the reaction window is conditional on one single-signer key choosing not to skip it. Disclosed rather than folded in, because \"a window exists\" and \"the window is unconditional\" are different claims and only the first is true."
+        }
+      ]
+    },
+    "assetControlSafety": {
+      "value": 40,
+      "detail": "worst of 2 gradable reserve(s): USDC CCW67T…: issuer GA5ZSE… has auth_revocable — can freeze the pool's balance",
+      "weight": 0.45,
+      "components": [
+        {
+          "id": "reserve:CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+          "label": "XLM",
+          "value": 100,
+          "detail": "XLM CAS3J7…: native XLM — a SAC with no issuer account to act from"
+        },
+        {
+          "id": "reserve:CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+          "label": "USDC",
+          "value": 40,
+          "detail": "USDC CCW67T…: issuer GA5ZSE… has auth_revocable — can freeze the pool's balance"
+        }
+      ]
+    }
+  },
+  "operationalState": {
+    "asOf": "2026-08-30T08:30:12.000Z",
+    "level": "active",
+    "detail": "the AMM router CBQDHN… is not in emergency mode",
+    "origin": "indeterminate",
+    "source": "router.get_emergency_mode() = false",
+    "blocked": []
+  },
+  "methodologyVersion": 1,
+  "lastRunAt": "2026-08-30T08:30:10.864Z",
+  "lastRunStatus": "ok",
+  "history": [
+    {
+      "status": "ok",
+      "safetyScore": 24,
+      "methodologyVersion": 1,
+      "factors": {
+        "adminKeySafety": {
+          "value": 10,
+          "detail": "role posture binds at 10 — pool: worst of 7 roles — RewardsAdmin single-key GCXYKA… (1 signer(s), high-threshold 0), 200 op(s) in 30d; SystemFeeAdmin single-key GB57YD… (1 signer(s), high-threshold 0), 200 op(s) in 30d | router: worst of 7 roles — RewardsAdmin single-key GCXYKA… (1 signer(s), high-threshold 0), 200 op(s) in 30d; SystemFeeAdmin single-key GB57YD… (1 signer(s), high-threshold 0), 200 op(s) in 30d",
+          "weight": 0.55,
+          "components": [
+            {
+              "id": "rolePosture",
+              "label": "Privileged role posture",
+              "value": 10,
+              "detail": "pool: worst of 7 roles — RewardsAdmin single-key GCXYKA… (1 signer(s), high-threshold 0), 200 op(s) in 30d; SystemFeeAdmin single-key GB57YD… (1 signer(s), high-threshold 0), 200 op(s) in 30d | router: worst of 7 roles — RewardsAdmin single-key GCXYKA… (1 signer(s), high-threshold 0), 200 op(s) in 30d; SystemFeeAdmin single-key GB57YD… (1 signer(s), high-threshold 0), 200 op(s) in 30d"
+            },
+            {
+              "id": "upgradeWindow",
+              "label": "Upgrade reaction window",
+              "value": 100,
+              "detail": "pool UpgradeDeadline = 0 — no code change scheduled (FutureWASM ae0da5a8… matches the running code) | router UpgradeDeadline = 0 — no code change scheduled (FutureWASM 06f4207b… matches the running code)"
+            },
+            {
+              "id": "timelockDuration",
+              "label": "Timelock duration",
+              "value": null,
+              "detail": "ADMIN_ACTIONS_DELAY is a compile-time constant with no getter, confirmed absent from all four deployed wasms, so the LENGTH of the upgrade window is not readable from the contract. The deadline and the current time are, which is why the window is graded as a state and never as a fraction remaining."
+            },
+            {
+              "id": "emergencyBypass",
+              "label": "Emergency Admin bypass",
+              "value": null,
+              "detail": "Aquarius's own response to Certora H-01: \"In the case of system vulnerability fixes, delay may be bypassed by the Emergency Admin role.\" So the reaction window is conditional on one single-signer key choosing not to skip it. Disclosed rather than folded in, because \"a window exists\" and \"the window is unconditional\" are different claims and only the first is true."
+            }
+          ]
+        },
+        "assetControlSafety": {
+          "value": 40,
+          "detail": "worst of 2 gradable reserve(s): USDC CCW67T…: issuer GA5ZSE… has auth_revocable — can freeze the pool's balance",
+          "weight": 0.45,
+          "components": [
+            {
+              "id": "reserve:CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+              "label": "XLM",
+              "value": 100,
+              "detail": "XLM CAS3J7…: native XLM — a SAC with no issuer account to act from"
+            },
+            {
+              "id": "reserve:CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+              "label": "USDC",
+              "value": 40,
+              "detail": "USDC CCW67T…: issuer GA5ZSE… has auth_revocable — can freeze the pool's balance"
+            }
+          ]
+        }
+      },
+      "computedAt": "2026-08-30T08:30:12.798Z",
+      "runAt": "2026-08-30T08:30:10.864Z"
+    }
+  ]
+}
+```
+
+Note `adminKeySafety` carrying a **different weight** here (`0.55`) than on a `lending` entry
+(`0.20`). Weights belong to a category's rulebook, so reading one off a response and applying it to
+another category's factor of the same name is the same mistake as comparing the two values.
+
 Each value is either a factor object or `null` (the factor genuinely does not apply to that
 protocol — render "N/A", do not treat it as zero).
 

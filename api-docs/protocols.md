@@ -26,85 +26,109 @@ curl https://stenion.vercel.app/api/v1/protocols
 {
   "protocols": [
     {
-      "id": "blend",
-      "name": "Blend",
-      "chain": "stellar",
-      "logo": "/assets/protocols/blend.svg",
-      "deployedOn": null,
-      "safetyScore": 52,
-      "computedAt": "2026-08-26T10:01:30.847Z",
-      "operationalState": {
-        "asOf": "2026-08-26T10:01:30.000Z",
-        "level": "active",
-        "detail": "pool status 1 (Active) — all operations available.",
-        "origin": "protocol",
-        "source": "PoolConfig.status = 1",
-        "blocked": []
-      },
-      "lastRunAt": "2026-08-26T10:01:25.334Z",
-      "lastRunStatus": "ok"
-    },
-    {
       "id": "etherfuse",
       "name": "Etherfuse",
       "chain": "stellar",
+      "category": "lending",
       "logo": null,
       "deployedOn": {
         "host": "Blend",
         "label": "Blend V2 pool"
       },
-      "safetyScore": 50,
-      "computedAt": "2026-08-26T10:01:08.281Z",
+      "safetyScore": 65,
+      "computedAt": "2026-08-30T08:30:10.636Z",
       "operationalState": {
-        "asOf": "2026-08-26T10:01:08.000Z",
+        "asOf": "2026-08-30T08:30:10.000Z",
+        "level": "entryDisabled",
+        "detail": "pool status 4 (Admin Frozen) — borrowing and supplying are disabled; withdrawals and repayments still work.",
+        "origin": "admin",
+        "source": "PoolConfig.status = 4",
+        "blocked": ["supply", "borrow"]
+      },
+      "lastRunAt": "2026-08-30T08:30:07.381Z",
+      "lastRunStatus": "ok"
+    },
+    {
+      "id": "blend",
+      "name": "Blend",
+      "chain": "stellar",
+      "category": "lending",
+      "logo": "/assets/protocols/blend.svg",
+      "deployedOn": null,
+      "safetyScore": 49,
+      "computedAt": "2026-08-30T07:45:25.080Z",
+      "operationalState": {
+        "asOf": "2026-08-30T07:45:25.000Z",
         "level": "active",
         "detail": "pool status 1 (Active) — all operations available.",
         "origin": "protocol",
         "source": "PoolConfig.status = 1",
         "blocked": []
       },
-      "lastRunAt": "2026-08-26T10:00:59.824Z",
-      "lastRunStatus": "ok"
+      "lastRunAt": "2026-08-30T08:30:23.669Z",
+      "lastRunStatus": "failed"
     },
     {
       "id": "kinetic",
       "name": "Kinetic",
       "chain": "stellar",
+      "category": "lending",
       "logo": "/assets/protocols/kinetic.png",
       "deployedOn": null,
       "safetyScore": 27,
-      "computedAt": "2026-08-26T10:01:17.379Z",
+      "computedAt": "2026-08-30T08:30:18.555Z",
       "operationalState": {
-        "asOf": "2026-08-26T10:01:13.000Z",
+        "asOf": "2026-08-30T08:30:16.000Z",
         "level": "active",
         "detail": "the router is not paused",
         "origin": "indeterminate",
         "source": "router.is_paused() = false",
         "blocked": []
       },
-      "lastRunAt": "2026-08-26T10:01:08.636Z",
+      "lastRunAt": "2026-08-30T08:30:12.987Z",
       "lastRunStatus": "ok"
     },
     {
       "id": "yieldblox",
       "name": "YieldBlox",
       "chain": "stellar",
+      "category": "lending",
       "logo": "/assets/protocols/yieldblox.png",
       "deployedOn": {
         "host": "Blend",
         "label": "Blend V2 pool"
       },
-      "safetyScore": 25,
-      "computedAt": "2026-08-26T10:01:24.961Z",
+      "safetyScore": 27,
+      "computedAt": "2026-08-30T07:45:21.408Z",
       "operationalState": {
-        "asOf": "2026-08-26T10:01:24.000Z",
+        "asOf": "2026-08-30T07:45:21.000Z",
         "level": "active",
         "detail": "pool status 0 (Admin Active) — all operations available.",
         "origin": "admin",
         "source": "PoolConfig.status = 0",
         "blocked": []
       },
-      "lastRunAt": "2026-08-26T10:01:17.757Z",
+      "lastRunAt": "2026-08-30T08:30:18.749Z",
+      "lastRunStatus": "failed"
+    },
+    {
+      "id": "aquarius-xlm-usdc",
+      "name": "Aquarius XLM/USDC",
+      "chain": "stellar",
+      "category": "dex",
+      "logo": null,
+      "deployedOn": null,
+      "safetyScore": 24,
+      "computedAt": "2026-08-30T08:30:12.798Z",
+      "operationalState": {
+        "asOf": "2026-08-30T08:30:12.000Z",
+        "level": "active",
+        "detail": "the AMM router CBQDHN… is not in emergency mode",
+        "origin": "indeterminate",
+        "source": "router.get_emergency_mode() = false",
+        "blocked": []
+      },
+      "lastRunAt": "2026-08-30T08:30:10.864Z",
       "lastRunStatus": "ok"
     }
   ]

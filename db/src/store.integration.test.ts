@@ -404,7 +404,8 @@ describe('Store SQL (integration)', { skip }, () => {
   });
 
   it('round-trips a dex run — a factor map that is not lending’s five', async () => {
-    // #104's proof, and it is a proof about the READ path, not about JSON.
+    // The proof for the dex round-trip, and it is a proof about the READ path,
+    // not about JSON.
     // `recordRun` writes `JSON.stringify(record.factors)` into a `$4::jsonb`
     // column and nothing on the way in inspects a key, so storage was never the
     // question. What was wrong was the declared type: `RunRecord.factors`,

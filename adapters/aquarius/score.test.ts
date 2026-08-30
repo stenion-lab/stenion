@@ -299,7 +299,7 @@ describe('adminKeySafety — role posture', () => {
     // `get_privileged_addrs()` returns `role -> Vec<Address>`. Every role holds
     // exactly one address today and the contract's own type permits several, so
     // taking `[0]` is correct on live data and wrong the day a co-holder is
-    // added — the same class of bug #101 caught on the fetch side. The healthy
+    // added — the same class of bug the fetch side caught. The healthy
     // holder is deliberately FIRST, so `[0]` would score 90 and pass.
     const coheld = roles({
       Admin: {
@@ -677,7 +677,7 @@ describe('operationalState', () => {
     assert.equal(s.origin, 'indeterminate');
   });
 
-  it('classifies a killed swap as swapDisabled — the rung #100 question C added', async () => {
+  it('classifies a killed swap as swapDisabled — the rung dex added', async () => {
     // Under the ladder as it stood this would have read `active`: true about
     // exit, wrong about the market. `blocked` carried the fact and `level`, the
     // field a reader scans, did not.
@@ -745,10 +745,10 @@ describe('operationalState', () => {
   });
 
   it('publishes emergency mode without claiming which operations it gates', async () => {
-    // Neither #100's census nor #101's reads established what
-    // `get_emergency_mode()` refuses. Listing operations it MIGHT refuse would
-    // put a guess into the one field defined as "every operation the protocol's
-    // own gating logic currently refuses".
+    // Neither the rulebook's census of the contracts nor this adapter's own
+    // reads established what `get_emergency_mode()` refuses. Listing operations
+    // it MIGHT refuse would put a guess into the one field defined as "every
+    // operation the protocol's own gating logic currently refuses".
     const s = state({ emergencyMode: true });
     assert.deepEqual(s.blocked, []);
     assert.equal(s.level, OperationalLevel.Active);
@@ -774,7 +774,7 @@ describe('operationalState', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The #15 invariant, re-grounded
+// The published-never-scored invariant, re-grounded
 // ---------------------------------------------------------------------------
 
 describe('operationalState never reaches a score', () => {
@@ -796,18 +796,18 @@ describe('operationalState never reaches a score', () => {
   };
 
   it('produces a byte-identical factor map across every operational state', async () => {
-    // THE CORRECTNESS CHECK FOR THE WHOLE ROUTE-(C) DECISION (#15). If any kill
-    // switch or emergency flag ever moves any factor, the rulebook has silently
-    // acquired a third signal and the category version is wrong.
+    // THE CORRECTNESS CHECK FOR THE WHOLE PUBLISH-NEVER-SCORE DECISION. If any
+    // kill switch or emergency flag ever moves any factor, the rulebook has
+    // silently acquired a third signal and the category version is wrong.
     //
-    // RE-GROUNDED FROM WHAT #103 ORIGINALLY DESCRIBED. That issue built this
-    // test around `estimate_swap` reverting on a swap-killed pool, which was the
-    // one place the kill switches could have leaked into a number. There is no
+    // RE-GROUNDED FROM WHAT THIS TEST ORIGINALLY DESCRIBED. It was first built
+    // around `estimate_swap` reverting on a swap-killed pool, which was the one
+    // place the kill switches could have leaked into a number. There is no
     // `estimate_swap` call anywhere in this adapter — `depthSafety` is deferred
     // — so that failure mode does not exist. What remains is the invariant
     // itself, and it holds structurally: neither factor reads `killed` or
     // `emergencyMode` at all. This asserts it rather than trusting it, over all
-    // 32 states rather than the one the issue named.
+    // 32 states rather than the one `estimate_swap` would have covered.
     const baseline = await factors(makeRaw());
     for (const raw of everyState()) {
       assert.deepEqual(
@@ -876,7 +876,7 @@ describe('metadata', () => {
     // `contractId` must name the contract the score was derived from, or a wrong
     // reading gets attached to a real address in an explorer link. There is no
     // default pool at all — Aquarius has 340 and none is reviewed as the
-    // flagship (#104).
+    // flagship.
     const a = new AquariusAdapter({ pool: { id: 'p1', name: 'One', poolId: 'CONE' } });
     const b = new AquariusAdapter({ pool: { id: 'p2', name: 'Two', poolId: 'CTWO' } });
     assert.equal(a.metadata.contractId, 'CONE');
