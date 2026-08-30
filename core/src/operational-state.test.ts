@@ -203,7 +203,7 @@ describe('mostRestrictive — reducing several readings to one', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The category-scoped operation vocabulary (#76)
+// The category-scoped operation vocabulary
 // ---------------------------------------------------------------------------
 
 describe('CATEGORY_OPERATIONS — vocabulary per category, ladder shared', () => {
@@ -220,8 +220,8 @@ describe('CATEGORY_OPERATIONS — vocabulary per category, ladder shared', () =>
   });
 
   it("leaves lending's five operations exactly as they were", () => {
-    // The whole of what #76 changed here is the TYPE — which category's names
-    // these are. Not one member was added, removed or renamed, because renaming
+    // The whole of what scoping the vocabulary changed here is the TYPE — which
+    // category's names these are. Not one member was added, removed or renamed, because renaming
     // one would change `blocked` in every stored operational_state jsonb and in
     // every API response, for a refactor that was supposed to move no data.
     assert.deepEqual(Object.values(CATEGORY_OPERATIONS.lending).sort(), [
@@ -246,7 +246,7 @@ describe('CATEGORY_OPERATIONS — vocabulary per category, ladder shared', () =>
     // CATEGORY_OPERATIONS-style per-category tables, the shared representation
     // this module exists for is gone — see its header.
     //
-    // `swapDisabled` arrived with `dex` (#100) and did NOT fork the ladder: it
+    // `swapDisabled` arrived with `dex` and did NOT fork the ladder: it
     // is a sixth rung on the one shared ladder, which is the whole point of
     // adding it here rather than giving dex a ladder of its own.
     assert.deepEqual(Object.values(OperationalLevel).sort(), [
@@ -290,9 +290,9 @@ describe('toDexOperationalState — the dex ladder', () => {
 
   it('calls a swap-killed pool swapDisabled, NOT active — open question C', () => {
     // THE ASSERTION THIS RUNG EXISTS FOR. Aquarius's `kill_swap` halts the
-    // market while both LP paths stay open. Under the pre-#100 ladder this
-    // classified `active` — true about exit, and wrong about the market — and
-    // `level` is the field a reader scans.
+    // market while both LP paths stay open. Under the ladder as it stood before
+    // `dex` was admitted this classified `active` — true about exit, and wrong
+    // about the market — and `level` is the field a reader scans.
     const state = toDexOperationalState(dexReading({ blocked: [DexOperation.Swap] }));
     assert.equal(state.level, OperationalLevel.SwapDisabled);
     assert.deepEqual(state.blocked, ['swap']);

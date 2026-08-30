@@ -89,7 +89,7 @@ function buildTargets(config: IndexerConfig): IndexTarget[] {
     rpcUrl: config.rpcUrl,
     horizonUrl: config.horizonUrl,
   });
-  // Aquarius (#104) — the first `dex` target, and the first target of any
+  // Aquarius — the first `dex` target, and the first target of any
   // category other than lending. Same list-driven shape as BLEND_POOLS and for
   // the same reason: every Aquarius market runs one of three wasms the router
   // itself declares, so a second market is an entry in AQUARIUS_POOLS and no

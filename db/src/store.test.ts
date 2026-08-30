@@ -140,7 +140,7 @@ describe('toHistoryEntry — the ok/failed discriminated union', () => {
   });
 
   it('carries the factor map that run stored, not the protocol current one', () => {
-    // The point of surfacing factors per history row (#82): a run's breakdown is
+    // The point of surfacing factors per history row: a run's breakdown is
     // what THAT run computed. If this were sourced from the detail's top-level
     // factors instead, every row in the list would show today's numbers under
     // yesterday's date — which is worse than not showing them at all.
@@ -341,7 +341,7 @@ describe('toLeaderboardEntry', () => {
       chain: 'stellar',
       // On the BOARD for the same reason operationalState is: two rows' scores
       // mean the same thing only when this agrees, so a consumer that ranks
-      // these entries needs it on every row to scope the ranking. See #78.
+      // these entries needs it on every row to scope the ranking.
       category: 'lending',
       logo: '/assets/protocols/blend.svg',
       deployedOn: null,

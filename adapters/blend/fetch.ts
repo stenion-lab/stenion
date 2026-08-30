@@ -208,8 +208,8 @@ async function readOraclePrice(
 // they are not in SEP-40, which defines no staleness tolerance and no deviation
 // bound at all.
 //
-// Not every Blend V2 pool runs an aggregator. Four live ones do not (issue #69,
-// probed 2026-08-26 by reading each oracle's contract spec out of its wasm):
+// Not every Blend V2 pool runs an aggregator. Four live ones do not (probed
+// 2026-08-26 by reading each oracle's contract spec out of its wasm):
 // Orbit's bridge oracle, Forex's proxy, Spectra PTs' deterministic zero-coupon
 // pricer and Solv's SEP-40 feed registry. They are four DIFFERENT contracts with
 // four different wasm hashes — not one "non-aggregator shape" — and they agree

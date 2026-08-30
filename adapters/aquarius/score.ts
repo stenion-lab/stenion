@@ -133,8 +133,8 @@ function accountScore(entry: AquariusRoleRaw['accounts'][number]): {
  * returns `role -> Vec<Address>`, not `role -> Address` — every role holds
  * exactly one today, and the contract's own type permits several. Reading the
  * first would silently drop a co-holder the day one is added, which is the same
- * class of mistake #101 caught and fixed on the fetch side; the scoring side must
- * not reintroduce it.
+ * class of mistake the fetch side caught and fixed when it decoded the same
+ * map; the scoring side must not reintroduce it.
  *
  * A role holding no readable address at all is `0` on `worst`'s empty rule —
  * "we could not read who controls this pool" is a statement about the pool, and
@@ -512,8 +512,9 @@ function assetControlSafety(raw: AquariusRawData): RiskFactor {
  * function could not report one if it tried.
  *
  * EMERGENCY MODE BLOCKS NOTHING HERE, AND THAT IS A REFUSAL TO INVENT RATHER
- * THAN AN OVERSIGHT. Neither #100's census nor #101's reads established which
- * user operations `get_emergency_mode()` gates; the flag is read from a getter
+ * THAN AN OVERSIGHT. Neither the rulebook's census of the contracts nor this
+ * adapter's own reads established which user operations `get_emergency_mode()`
+ * gates; the flag is read from a getter
  * and its authorisation effect was never confirmed against the wasm. Listing
  * operations it *might* refuse would put a guess into the one field defined as
  * "every operation the protocol's own gating logic currently refuses", so the

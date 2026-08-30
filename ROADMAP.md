@@ -25,7 +25,7 @@ commitment — priorities shift as protocols launch and as the project finds fun
     unregistered for want of a target slot, and say so on the registry. See "Beyond lending" below.
     Same label, same adapter, third pool; a config entry and no new scoring code.
 
-  **Four scored markets, not five.** The Blend V2 pool investigation (#65) found five unregistered
+  **Four scored markets, not five.** The Blend V2 pool investigation found five unregistered
   pools clearing the market-size floor and registered exactly one of them. The other four are
   published as **assessed-and-not-scored** coverage entries because their oracles fail the
   oracle-legibility precondition — see "Four Blend V2 markets" under _Protocols investigated and
@@ -33,7 +33,7 @@ commitment — priorities shift as protocols launch and as the project finds fun
 
 - **Operational state, published beside every score and deliberately not scored.** Both adapters
   had always read a pause/frozen signal (Blend's `PoolConfig.status`, K2's `router.is_paused()`)
-  and neither had ever used it. Resolved in #15 as a decision **not** to grade it: nothing on chain
+  and neither had ever used it. Resolved as a decision **not** to grade it: nothing on chain
   separates an admin freezing a pool to contain a threat from an admin abandoning it, and the two
   protocols' restricted states are not even the same shape — Blend never blocks a withdrawal at any
   of its seven statuses, while K2's pause blocks withdrawals, repayments and liquidations alike. So
@@ -134,8 +134,8 @@ commitment — priorities shift as protocols launch and as the project finds fun
   that work was the footnote at the bottom of this file, which no visitor reads: absence told a
   reader nothing, so someone searching for a protocol learned only that it wasn't there. Four
   entries at launch — Templar, K2's two sub-floor markets, and Nectar — each backed by an
-  investigation actually recorded in this repo. **Eight today**: #69 added the four Blend V2 markets
-  whose oracles cannot be graded (Orbit, Forex, Spectra PTs, Solv), under a status of their own
+  investigation actually recorded in this repo. **Eight today**: the oracle-legibility precondition
+  added the four Blend V2 markets whose oracles cannot be graded (Orbit, Forex, Spectra PTs, Solv), under a status of their own
   rather than folded into the size floor, because their exclusion has nothing to do with their size.
 
   Three properties are load-bearing. **Nothing in the section renders a numeral**, so "not scored"
@@ -250,7 +250,7 @@ adds a market**, so it is first in fact and not only in presentation.
 
   | Dial                         | Where it is | Why it cannot move                                                                                                                                                                                                                                 |
   | ---------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `STENION_CYCLE_BUDGET_MS`    | 50,000      | Raised from 42,000 in #104 against three `curl`ed deployed cycles. 60,000 is the `maxDuration` ceiling itself, so the next step up is the cliff.                                                                                                   |
+  | `STENION_CYCLE_BUDGET_MS`    | 50,000      | Raised from 42,000 against three `curl`ed deployed cycles. 60,000 is the `maxDuration` ceiling itself, so the next step up is the cliff.                                                                                                           |
   | `STENION_CYCLE_CONCURRENCY`  | 1           | Shipped at 2 and reverted the same day when `mainnet.sorobanrpc.com` — free, shared, keyless — started refusing the target behind the burst. Raising it again needs a **deployed** RPC-tolerance measurement, never an estimate.                   |
   | `STENION_ATTEMPT_TIMEOUT_MS` | 10,000      | Already lowered 15s → 10s to buy the fourth target. The registry's most expensive attempt (an Aquarius pool: 37 requests against Blend's 16) sits at an estimated 5.5–8.7s deployed, so a lower cap would time out a healthy target on a slow day. |
 
@@ -371,7 +371,7 @@ adds a market**, so it is first in fact and not only in presentation.
   already there, but the API exposes only `safetyScore` per history point. Charting a single
   factor over time — watching `oracleSafety` sawtooth on its own axis — is deliberately deferred
   until the window question above is settled, because it multiplies the same payload by five.
-- **Concurrent targets within a cycle — DONE (#68).** The indexer no longer runs targets
+- **Concurrent targets within a cycle — DONE.** The indexer no longer runs targets
   sequentially and no longer divides one budget between them. `STENION_CYCLE_CONCURRENCY` targets
   (default 2) run through a bounded worker pool, and each target's deadline is the end of
   `STENION_CYCLE_BUDGET_MS` minus one full attempt reserved for each wave still queued behind it.
@@ -401,8 +401,8 @@ adds a market**, so it is first in fact and not only in presentation.
   than discovered by someone adding a pool. Past it, behaviour degrades to whole attempts first-come
   with the tail failing cleanly and visibly on `/api/v1/health`, not a squeeze for everyone.
 
-  **That ceiling has since been reached.** #104 registered the fifth target and raised the budget
-  42s → 50s to fit it, which was the last raise available under the 60s `maxDuration`. The registry
+  **That ceiling has since been reached.** Registering the fifth target — the first dex market —
+  raised the budget 42s → 50s to fit it, which was the last raise available under the 60s `maxDuration`. The registry
   is now full — see **the blocker at the top of this section**, which is where the exit from it is
   tracked.
 
@@ -504,8 +504,8 @@ adds a market**, so it is first in fact and not only in presentation.
     withdrawals don't mean anything for an AMM. Scoring other categories means designing a taxonomy
     that fits how each one actually fails, not stretching the lending model over them:
     - **DEXs / AMMs** (Soroswap, Phoenix, Aquarius) — **SHIPPED for Aquarius: rulebook complete
-      (#100 admitted the factor set, #102 reviewed the weight table) and one market registered and
-      scored (#104).** See [`methodology/dex.md`](methodology/dex.md). The `dex` category is
+      (one review admitted the factor set, a second reviewed the weight table) and one market
+      registered and scored.** See [`methodology/dex.md`](methodology/dex.md). The `dex` category is
       versioned at 1 on its own counter and published in full — **two** factors: `adminKeySafety` at
       **0.55** (seven named roles plus the two-step upgrade deadline, sharing lending's factor key
       deliberately) and `assetControlSafety` at **0.45** (whether a SAC issuer can freeze or claw
@@ -517,8 +517,7 @@ adds a market**, so it is first in fact and not only in presentation.
       pool (`CA6PUJLB…`), scoring **24** — `adminKeySafety` 10, `assetControlSafety` 40 — and
       carrying `category: 'dex'` and `methodology_version: 1` on every run. It renders as its own
       ranked block on the registry, numbered 01 of dex, because a position numeral is scoped to one
-      rulebook (#78) and this is the first time that rule has had two categories to enforce it
-      against.
+      rulebook, and this is the first time that rule has had two categories to enforce it against.
 
       **What is NOT covered: the other 339 Aquarius pools, and every other DEX.** The census, re-read
       at ledger 64,182,824 on 2026-08-29, is 340 pools across 304 token sets — 272 constant-product,
@@ -538,15 +537,15 @@ adds a market**, so it is first in fact and not only in presentation.
       against are in
       [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md).
 
-      **The `Adapter` interface change #103 left unreviewed has been reviewed, and revised.** #103
+      **The `Adapter` interface change that shipped unreviewed has been reviewed, and revised.** It
       added a third type parameter, `TFactors`, to make the first non-lending adapter compile at all,
-      and flagged the decision as unreviewed. #104 found the parameter was never tied to `TCategory`
+      and flagged the decision as unreviewed. The review found the parameter was never tied to `TCategory`
       — `Adapter<Raw, 'dex', RiskFactorMap>` compiled, so a dex adapter could publish lending's five
       factors, and so could one with invented keys. The factor map is now **derived** from the
       category, `FactorMapFor<TCategory>`, read straight out of `CATEGORY_FACTORS`, so an adapter
       cannot disagree with its own rulebook. `ADAPTER_INTERFACE_VERSION` is **4**. The four frozen
       lending snapshots and both lending adapters are byte-identical either side of it. Decision
-      record, with the two #103 claims it corrects, in
+      record, with the two claims it corrects, in
       [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md).
 
       **`@stenion/db` now carries any category's factor map.** `RunRecord.factors`,
@@ -663,9 +662,8 @@ part of the discipline, not a failure. Four notable cases:
   change here:** an oracle that starts publishing the two parameters makes its pool scorable under
   the existing rulebook, and the work is a `BLEND_POOLS` entry plus a deleted coverage entry in one
   PR. Etherfuse (`CDMAVJPF…`) was the fifth of the five and is _not_ on this list — it runs an
-  aggregator, so it is scored, and [#65](https://github.com/stenion-lab/stenion/issues/65)
-  **registered it**: it is a ranked entry above, and the pool investigation is closed at one market
-  registered and four published here.
+  aggregator, so it is scored, and it **is registered**: it is a ranked entry above, and the pool
+  investigation is closed at one market registered and four published here.
 
   **The curation question that investigation raised is still open, and this pass did not close it.**
   Three of the five are tiny — read on 2026-08-26, Solv held $175.69, Spectra PTs $9.88, and Forex

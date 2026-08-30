@@ -18,7 +18,7 @@ const nextConfig = {
   // than being bundled into the serverless function.
   //
   // @stellar/stellar-sdk MUST NOT be added here — externalizing it is what broke the
-  // cron route on the Next 15 -> 16 upgrade (#96), and re-adding it breaks it again:
+  // cron route on the Next 15 -> 16 upgrade, and re-adding it breaks it again:
   //
   //   @stenion/adapters compiles to CommonJS (no "type": "module"), so it reaches the
   //   SDK through the `require` condition -> lib/cjs/*, and the SDK's CJS build does
@@ -43,7 +43,7 @@ const nextConfig = {
   // request time (single source of truth, not duplicated). Those files live
   // outside the dashboard dir, so include each explicitly in its route's
   // serverless bundle or the read 404s on Vercel — the failure is silent in dev,
-  // where the files are simply there on disk (#96).
+  // where the files are simply there on disk.
   //
   // Both docs are now FOLDERS of per-topic files, and every one of them has to
   // be listed — a part left out here renders locally and 404s in production, and

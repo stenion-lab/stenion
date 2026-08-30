@@ -26,13 +26,14 @@ export type RunRecord =
        * The factor breakdown behind `safetyScore`, keyed by whichever factors
        * `category` below scores.
        *
-       * `FactorMap`, NOT `RiskFactorMap`, AND THE DIFFERENCE IS THE POINT (#104).
+       * `FactorMap`, NOT `RiskFactorMap`, AND THE DIFFERENCE IS THE POINT.
        * `RiskFactorMap` is *lending's* map — `Record<RiskFactorType, …>`, its five
        * keys required — and this column has never held anything else because
        * lending was the only category with an adapter. `dex` scores two keys and
        * neither of them is four of lending's five, so a `dex` run could not be
        * written through a `RiskFactorMap`-typed field at all: that was the
-       * deliberate compile error #103 left standing here rather than casting past.
+       * deliberate compile error left standing here rather than cast past while
+       * the dex adapter was being built.
        *
        * The runtime never needed the change. `recordRun` writes
        * `JSON.stringify(record.factors)` into a `$4::jsonb` column and nothing in
@@ -104,7 +105,7 @@ export interface LeaderboardEntry {
    * afterwards. Two rows' scores mean the same thing only when this agrees, so a
    * consumer ranking these entries must scope the ranking to one category. The
    * array's order carries no cross-category claim — API.md says so in the terms
-   * clients read, and the registry enforces it in #78.
+   * clients read, and `dashboard/app/lib/registry-query.ts` enforces it.
    */
   category: ProtocolCategory;
   /**
@@ -146,7 +147,7 @@ export interface LeaderboardEntry {
    * part of what the row IS. A market whose withdrawals are halted and a market
    * that is fully open can publish the same number, and a reader who scans the
    * registry and leaves must not have been shown only the number. That is the
-   * entire reason issue #15 chose publishing over scoring: the flag has to
+   * entire reason publishing was chosen over scoring: the flag has to
    * travel with every row of every leaderboard fetch, or the decision not to
    * score becomes a decision to hide.
    */
@@ -161,7 +162,7 @@ export interface LeaderboardEntry {
  * carry the score, its factor breakdown and the timestamps; `failed` rows carry
  * the error.
  *
- * `factors` was withheld here until #82 and is now returned, because the
+ * `factors` was withheld here at first and is now returned, because the
  * alternative was worse than the payload it saves. Every run's map was already
  * in the `risk_scores` jsonb, and a consumer that wanted a past run's breakdown
  * had no way to reach it but a per-row request — 50 of them for one page. It is
@@ -240,7 +241,7 @@ export interface ProtocolDetail {
    * part of what the row IS. A market whose withdrawals are halted and a market
    * that is fully open can publish the same number, and a reader who scans the
    * registry and leaves must not have been shown only the number. That is the
-   * entire reason issue #15 chose publishing over scoring: the flag has to
+   * entire reason publishing was chosen over scoring: the flag has to
    * travel with every row of every leaderboard fetch, or the decision not to
    * score becomes a decision to hide.
    */
@@ -401,7 +402,7 @@ export function toHistoryEntry(row: HistoryRow): HistoryEntry {
         // jsonb comes back parsed, so this passes straight through like the
         // detail's top-level factors; non-null on ok rows by risk_scores_shape.
         //
-        // THE CAST ASSERTS NON-NULL AND NOTHING ELSE (#104). It used to read
+        // THE CAST ASSERTS NON-NULL AND NOTHING ELSE. It used to read
         // `as RiskFactorMap`, which additionally claimed the row held lending's
         // five keys — true of every row written before `dex` existed and a lie
         // about a `dex` row, whose map has two. A consumer reading

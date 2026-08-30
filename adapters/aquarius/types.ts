@@ -2,9 +2,9 @@
 // of this adapter's module graph. Everything here is either a type or a
 // constant; nothing reads the chain and nothing scores.
 //
-// SCOPE OF THIS FILE'S ADAPTER (#101). This is the FETCH half only. `dex` ships
-// with two factors — `adminKeySafety` and `assetControlSafety` — and no weights
-// yet (#102), so nothing here is read in order to produce a number today. The
+// SCOPE OF THIS FILE. This is the FETCH half only. `dex` ships with two factors
+// — `adminKeySafety` and `assetControlSafety` — and this file reads nothing in
+// order to produce a number: it is either a type or a constant throughout. The
 // raw shape is nonetheless the place every pool-type divergence and every
 // unreadable quantity has to be resolved, and those decisions outlive whichever
 // formula eventually reads them.
@@ -86,9 +86,9 @@ export type AquariusRole = (typeof AQUARIUS_ROLES)[number];
 /**
  * The three pool types the router can deploy, as `pool_type()` reports them.
  *
- * **`constant_product`, NOT `standard`.** Issue #100's rulebook prose and #101
- * both call the constant-product type "standard", which is what Aquarius's own
- * documentation calls it. The deployed contract returns the symbol
+ * **`constant_product`, NOT `standard`.** The rulebook prose and this adapter's
+ * own design notes both called the constant-product type "standard", which is
+ * what Aquarius's own documentation calls it. The deployed contract returns the symbol
  * `constant_product` — read live on 2026-08-29 from a pool of each type. The
  * chain's spelling is the one in the code, because the code compares against
  * what the chain says; the prose is a naming discrepancy recorded in
@@ -127,7 +127,7 @@ export interface AquariusPool {
 }
 
 /**
- * The XLM/USDC constant-product pool — the one Aquarius market registered (#104).
+ * The XLM/USDC constant-product pool — the one Aquarius market registered.
  *
  * WHY ONE, AND WHY THIS ONE. Not because the rulebook excludes the other 339:
  * `dex` has **no size floor and no pending one** (`methodology/dex.md`,
@@ -151,8 +151,8 @@ export interface AquariusPool {
  * whose reserves are **both** gradable. Both tokens are Stellar Asset Contracts,
  * so nothing in `assetControlSafety` is excluded as a route-(a) disclosure — the
  * larger XLM/SolvBTC pool (21.4M XLM) holds a wasm token and would publish a
- * number computed from one of its two legs. Verified per pool against #104's
- * checklist at ledger 64,182,918 on 2026-08-29:
+ * number computed from one of its two legs. Verified per pool against the
+ * registration checklist at ledger 64,182,918 on 2026-08-29:
  *
  *   pool_type()               constant_product
  *   running wasm              ae0da5a8…de9852 — equals the router's own
@@ -194,7 +194,7 @@ export const AQUARIUS_XLM_USDC: AquariusPool = {
   // redrawing a wordmark to fit a tile are forbidden (ProtocolMetadata.logo).
   // The dashboard draws an initials tile, which is the supported answer.
   //
-  // NO `deployedOn`, DECIDED RATHER THAN OMITTED (#104). The field means "this
+  // NO `deployedOn`, DECIDED RATHER THAN OMITTED. The field means "this
   // entry is a market running ANOTHER protocol's contracts" — YieldBlox on
   // Blend. An Aquarius pool runs Aquarius's contracts, so setting it would be a
   // category error, and it is the same reading under which Blend's own Fixed
@@ -444,7 +444,8 @@ export interface AquariusKillFlagsRaw {
  * One Aquarius pool, read.
  *
  * Nothing in here is scored yet — `dex`'s two factors are `adminKeySafety` and
- * `assetControlSafety`, and the scoring implementation is #103. Several fields
+ * `assetControlSafety`, and the scoring implementation lives in ./score.ts.
+ * Several fields
  * (`reserves`, `totalShares`, `feeFraction`) feed no factor today and are read
  * anyway, because they are what identifies and provenances a pool, and because
  * re-deriving the pool-type divergence handling later would mean re-doing the
@@ -472,8 +473,9 @@ export interface AquariusRawData {
    * `concentrated` it is the total across all tick ranges, of which only the
    * active range is available at the current price — the tradable part is
    * described by `get_active_liquidity()` and `Slot0`, which this adapter
-   * deliberately does not read (concentrated-specific reads are out of scope
-   * per #100). Nothing downstream may treat the two as the same quantity, and
+   * deliberately does not read (concentrated-specific reads are out of scope for
+   * the `dex` rulebook). Nothing downstream may treat the two as the same
+   * quantity, and
    * the pairing of these two fields is what stops it doing so by accident.
    */
   reserves: bigint[];
@@ -502,9 +504,9 @@ export interface AquariusRawData {
    *   concentrated      { fee: 30, pool_type: 'concentrated', tick_spacing: 60 }
    *
    * `bigint` is in the union because of `a`, the stableswap amplification
-   * coefficient, which decodes as u128. That was not in #101's description of
-   * this read and was caught by a captured fixture failing to satisfy the
-   * narrower type — which is the entire reason fixtures are checked with
+   * coefficient, which decodes as u128. That was not in the original
+   * description of this read and was caught by a captured fixture failing to
+   * satisfy the narrower type — which is the entire reason fixtures are checked with
    * `satisfies` rather than cast.
    */
   info: Record<string, string | number | bigint>;
@@ -539,9 +541,9 @@ export interface AquariusAdapterOptions {
    * Which market to read. Required — there is no default pool, deliberately.
    *
    * `BlendAdapter` defaults to Blend's flagship because Blend has one. Aquarius
-   * has 340 pools, none registered and none reviewed as the flagship (#104), so
-   * a default here would be this adapter picking the protocol's public face by
-   * accident. A whole `AquariusPool` rather than a bare id, for the reason
+   * has 340 pools and none of them is reviewed as the flagship, so a default
+   * here would be this adapter picking the protocol's public face by accident. A
+   * whole `AquariusPool` rather than a bare id, for the reason
    * `BlendAdapterOptions.pool` gives: target and identity must move together.
    */
   pool: AquariusPool;

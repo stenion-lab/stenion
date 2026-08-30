@@ -114,7 +114,7 @@ export type CoverageStatus =
    * work to point at. Kept in the union so that is a data change, not a
    * refactor.
    *
-   * AQUARIUS WAS ON THAT LIST AND HAS BEEN REMOVED (#104). It can never land in
+   * AQUARIUS WAS ON THAT LIST AND HAS BEEN REMOVED. It can never land in
    * this status again: `dex` has a published rulebook and one Aquarius market is
    * scored under it, so "no taxonomy exists for this category" is now false of
    * it. Its unregistered markets are `awaiting-capacity` below, which is a
@@ -127,7 +127,7 @@ export type CoverageStatus =
    * has no target slot left.
    *
    * THE ONLY MEMBER HERE THAT IS A STATEMENT ABOUT STENION RATHER THAN ABOUT THE
-   * MARKET (#104), and it is spelled as one. Every other status says something
+   * MARKET, and it is spelled as one. Every other status says something
    * we read on chain and could not grade. This one says the opposite: the
    * rulebook applies, the reads work, the number would be as true of these
    * markets as of the one that is scored — and a scoring cycle runs inside

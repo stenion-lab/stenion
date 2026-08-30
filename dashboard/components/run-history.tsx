@@ -18,8 +18,8 @@ const EASE = [0.16, 1, 0.3, 1] as const;
  * WHY THE BREAKDOWN IS HERE AT ALL. The page already shows the CURRENT score's
  * factors, so the run list could only say a score moved, never which factor
  * moved it. The breakdowns were always stored — `risk_scores.factors` — they
- * were just not returned; #82 returns them on the history rows and this renders
- * them. It is the same `FactorBreakdown` the current score uses, on that run's
+ * were just not returned. They are returned on the history rows now, and this
+ * renders them. It is the same `FactorBreakdown` the current score uses, on that run's
  * own map: nothing here recomputes or re-grades anything.
  *
  * PER-ROW STATE, NOT AN ACCORDION. Expanding one row must not collapse another

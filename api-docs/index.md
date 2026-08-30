@@ -7,27 +7,17 @@ wallet, an aggregator, or a dashboard and you want a live safety number for a pr
 are about to interact with, this is the whole surface area.
 
 The scored examples below were captured from the live production API, not written from the type
-definitions. Their responses are verbatim bodies from a snapshot taken at
-**2026-08-25T18:05Z**; the numbers move every ~5 minutes, the shapes do not.
+definitions. They are verbatim bodies: `/v1/protocols` and `/v1/protocol/aquarius-xlm-usdc` from
+**2026-08-30T08:35Z**, `/v1/protocol/blend` from **2026-08-28T12:25Z**. The numbers move every
+~5 minutes, the shapes do not.
 
-> **One field is documented below but not yet in these captures: `category`.** It ships with the
-> per-category rulebook change (#76) and was added to the field tables when the code was, while the
-> example bodies still predate the deploy that publishes it. They are re-`curl`ed from production
-> rather than hand-edited, because a body written from the types reproduces the type instead of the
-> truth — which is the entire reason these are captures. Until that recapture, read the tables as
-> current and the bodies as one deploy behind on this one field.
-
-> **A second `category` is now scored, and no example body here shows one yet.** Registering the
-> first `dex` market (#104) means `/v1/protocols` returns entries whose `category` is `dex`, and
-> whose `factors` object has **two** keys rather than lending's five —
-> `adminKeySafety` and `assetControlSafety`. The field tables say so and
-> [the `factors` section](protocol-by-id.md#the-factors-object) explains how to read a factor map
-> whose keys you do not recognise. The bodies do not, because they are captures and the change is
-> not deployed at the time of writing; the dex entry's shape was verified end-to-end over HTTP
-> against a real indexer cycle, but not against production, and a local capture is not a production
-> capture. **Re-`curl` `/v1/protocols` and `/v1/protocol/aquarius-xlm-usdc` from production once
-> this deploys**, and delete this note. Until then, read the tables as current and every example
-> body as lending-only.
+> **Both categories appear in the examples.** `/v1/protocols` returns `"lending"` and `"dex"`
+> entries side by side, and a `dex` protocol's `factors` object has **two** keys rather than
+> lending's five — `adminKeySafety` and `assetControlSafety`, at their own weights.
+> [The `factors` section](protocol-by-id.md#the-factors-object) explains how to read a factor map
+> whose keys you do not recognise, and carries a full `dex` response beside the `lending` one.
+> **Scores are comparable only within one `category`**, and so are the keys and weights of
+> `factors`.
 
 The coverage example was `curl`ed from production on **2026-08-25T18:20Z**.
 

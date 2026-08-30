@@ -59,7 +59,8 @@ These override any default behavior and are enforced in code and review:
   static Findings (hand-written, reviewed in a PR); and **live ungraded state** — measured every
   cycle, published as a typed field, never graded. The third exists because pause/frozen state is
   real, changing, on-chain data that changes how a score should be read while nothing on chain
-  lets us grade it (`OperationalState`, `core/src/operational-state.ts`, decided in #15). Its rule:
+  lets us grade it (`OperationalState`, `core/src/operational-state.ts`; the reasoning is in
+  `methodology/publishing-rules.md`). Its rule:
   a live ungraded field must be **published beside the score wherever the score appears**, or the
   decision not to grade it becomes a decision to hide it. Nothing in that category may be reachable
   from `scoreFactors` — the adapters' `computeRiskFactors` must produce a byte-identical factor map
@@ -160,8 +161,8 @@ These override any default behavior and are enforced in code and review:
   moment anyone reads it. `weights.test.ts` asserts the absence at runtime and `scoring.test.ts`
   asserts such a category publishes **no** weight table in `methodology/`, so the two cannot drift
   into agreeing on a number nobody reviewed. It is a state to leave, not to live in — `dex` passed
-  through it (#100 → #102) and **no category is in it today**; it is kept for the next one admitted
-  the same way.
+  through it — admitted as a factor set, weighted in a later review — and **no category is in it
+  today**; it is kept for the next one admitted the same way.
 - **An adapter is a FOLDER of four files, and only `index.ts` is API.** `adapters/<protocol>/`
   holds `types.ts` (mainnet wiring, constants, raw on-chain shape, options), `fetch.ts` (everything
   touching RPC/Horizon, plus decoders, behind one `fetch*` entry point), `score.ts` (the five
@@ -186,22 +187,22 @@ These override any default behavior and are enforced in code and review:
   runs adapters through the `toTarget<T>()` wrapper (see [`indexer/src/index.ts`](indexer/src/index.ts))
   so a heterogeneous adapter list shares one typed run loop. `core/src/adapter.ts` carries
   `ADAPTER_INTERFACE_VERSION` — bump it for breaking interface changes rather than rewriting
-  every adapter at once. It is at **4**: v2 added the required `operationalState(raw)` method
-  (#15), v3 the required `metadata.category` field and the `TCategory` parameter that scopes
-  `operationalState`'s vocabulary to it (#76), v4 made the factor map a function of that same
-  parameter (#104). All required rather than optional, deliberately — an optional member is one
+  every adapter at once. It is at **4**: v2 added the required `operationalState(raw)` method,
+  v3 the required `metadata.category` field and the `TCategory` parameter that scopes
+  `operationalState`'s vocabulary to it, and v4 made the factor map a function of that same
+  parameter. All required rather than optional, deliberately — an optional member is one
   every future adapter can skip, which is the retrofit debt the constant exists to make visible.
 - **An adapter declares its category; it does NOT declare its factor map.**
   `computeRiskFactors`/`score` speak `FactorMapFor<TCategory>`, derived from `CATEGORY_FACTORS`, so
   an adapter that declares `'dex'` owes exactly the factors `methodology/dex.md` publishes and
   cannot return lending's five or a key no rulebook has. This replaces the defaulted `TFactors`
-  parameter #103 added under deadline and flagged as unreviewed: the review (#104) found the
+  parameter added under deadline and flagged as unreviewed: the review found the
   parameter was never tied to `TCategory`, so `Adapter<Raw, 'dex', RiskFactorMap>` compiled. It is
-  now a settled decision with the alternatives and the two corrected #103 claims recorded in
+  now a settled decision, with the alternatives and the two claims it corrects recorded in
   [`architecture/monorepo-layout.md`](architecture/monorepo-layout.md), and guarded by
   `@ts-expect-error` probes in `core/src/weights.test.ts`.
 - **Precision at the adapter boundary, one open `FactorMap` from the indexer onward.** That split is
-  the answer #103 left open. `IndexTarget.run`, `RunRecord`, `HistoryEntry` and `ProtocolDetail` all
+  the answer that review left open. `IndexTarget.run`, `RunRecord`, `HistoryEntry` and `ProtocolDetail` all
   carry `FactorMap` — storage and transport enforce no rulebook and must not claim a key set they
   are not the source of. `getProtocolDetail`'s read-side cast asserts only the non-null the
   `risk_scores_shape` CHECK guarantees; it used to assert lending's five keys, which was a lie about
@@ -271,7 +272,7 @@ computed per response from the body rather than being a constant.
 > bounded worker pool (`STENION_CYCLE_CONCURRENCY`, default 2) and each gets the end of the budget
 > less one full attempt reserved per queued wave (`targetDeadline`). A rule where a target's
 > deadline shrinks as the registry grows can fail protocols that already work — that is what
-> `budgetMs / targetCount` did, and #68 removed it. The replacement's ceiling is the explicit
+> `budgetMs / targetCount` did, and it was removed. The replacement's ceiling is the explicit
 > condition `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs`, checked by
 > `cycleFeasibility()` and warned about every cycle, never discovered by adding a pool.
 >

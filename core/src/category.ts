@@ -22,9 +22,11 @@
  * The protocol categories Stenion publishes a rulebook for.
  *
  * TWO MEMBERS: `lending`, the rulebook every scored market runs under today, and
- * `dex`, admitted by the gate-checked submission in #100 as the first use of the
- * machinery #76–#79 built. `lending` was always the unstated default, and naming
- * it is what made a second category expressible rather than assumed.
+ * `dex`, admitted by a gate-checked submission as the first use of the category
+ * machinery — `ProtocolCategory`, `METHODOLOGY_VERSIONS`, `CATEGORY_FACTORS`,
+ * `CATEGORY_OPERATIONS` and TAXONOMY.md. `lending` was always the unstated
+ * default, and naming it is what made a second category expressible rather than
+ * assumed.
  *
  * A CLOSED UNION, NOT AN OPEN STRING. Adding a category is never a data-only
  * change: it needs a taxonomy, a weight table, a `methodology/<category>.md`
@@ -36,12 +38,11 @@
  * as the three places it had to be declared, which is the design working.
  *
  * `dex` IS REGISTERED AND WEIGHTED, AND STILL SCORES NOTHING. Its factor set was
- * admitted in #100 with `status: 'pendingWeights'` — a different type from a
- * published one, carrying no `weight` on any factor — and #102 reviewed the
- * weight table and flipped it to `status: 'published'`. What stops a `dex` row
- * reaching `risk_scores` today is no longer the type system but the plain
- * absence of the rest: the adapter's scoring half is #103 and no market is
- * registered to a target list until #104.
+ * admitted with `status: 'pendingWeights'` — a different type from a published
+ * one, carrying no `weight` on any factor — and a later review of the weight
+ * table flipped it to `status: 'published'`. What stops a `dex` row reaching
+ * `risk_scores` today is no longer the type system but the plain absence of the
+ * rest: the adapter's scoring half, and a market registered to a target list.
  */
 export const PROTOCOL_CATEGORIES = ['lending', 'dex'] as const;
 export type ProtocolCategory = (typeof PROTOCOL_CATEGORIES)[number];
@@ -74,17 +75,17 @@ export type ProtocolCategory = (typeof PROTOCOL_CATEGORIES)[number];
  *     history stamped 2 while a briefly-live v2 was in this constant before the
  *     rulebook was flattened back. See METHODOLOGY.md, "Current version".
  *
- * `dex: 1` — the two-factor AMM rulebook admitted in #100
- *     (`methodology/dex.md`). **Its own counter, with no relation to lending's.**
- *     Both read 1 today and that is a coincidence of both being new, not a
- *     statement that they are the same rulebook or that a `dex` v1 score is
+ * `dex: 1` — the two-factor AMM rulebook in `methodology/dex.md`. **Its own
+ *     counter, with no relation to lending's.** Both read 1 today and that is a
+ *     coincidence of both being new, not a statement that they are the same
+ *     rulebook or that a `dex` v1 score is
  *     comparable to a `lending` v1 score — it is exactly the ambiguity
  *     `risk_scores.category` is stamped beside this number to remove. It starts
  *     at 1 rather than continuing lending's count for the same reason: a
  *     category's first published rulebook is its version 1, always.
  *
  *     It is a version for a rulebook nothing has yet been scored under, and it
- *     stayed at 1 when #102 published the weight table: a rulebook that could
+ *     stayed at 1 when the weight table was published: a rulebook that could
  *     not compute a score cannot have produced one that a weight made
  *     non-comparable, so there was no discontinuity to label. It is declared at
  *     all because TAXONOMY.md Gate 7 requires a category to arrive at 1 rather

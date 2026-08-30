@@ -1,6 +1,6 @@
 // Tests for `factorRows` — the ordering the factor breakdown renders from.
 //
-// WHY THIS EXISTS. Until #82 the breakdown was drawn by walking FACTOR_ORDER and
+// WHY THIS EXISTS. The breakdown used to be drawn by walking FACTOR_ORDER and
 // reading the map by key, which is correct for exactly one factor set: lending's
 // five, today's only rulebook. The same component now renders a HISTORICAL run's
 // map as well, and a run stored whatever its own rulebook published. So the rows

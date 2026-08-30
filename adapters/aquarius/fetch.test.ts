@@ -36,9 +36,9 @@ import { aquariusWasmTokenMainnet } from '../fixtures/aquarius/wasm-token-mainne
 
 describe('asPoolType — the three types the router can deploy', () => {
   it('accepts exactly the three the chain reports', () => {
-    // `constant_product`, NOT `standard`. Aquarius's documentation and issues
-    // #100/#101 all say "standard"; the deployed contract returns
-    // `constant_product`, read live from a pool of each type. This assertion is
+    // `constant_product`, NOT `standard`. Aquarius's documentation and this
+    // adapter's own design notes all say "standard"; the deployed contract
+    // returns `constant_product`, read live from a pool of each type. This assertion is
     // the one that would fail if someone "corrected" the code to match the prose.
     assert.deepEqual([...AQUARIUS_POOL_TYPES], ['constant_product', 'stable', 'concentrated']);
     for (const t of AQUARIUS_POOL_TYPES) assert.equal(asPoolType(t), t);

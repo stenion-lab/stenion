@@ -8,7 +8,7 @@
 // page renders comes out of buildRegistryView, so "does an unscored entry ever
 // land inside the ranked list" is a question with an answer.
 //
-// THE SAME RULE, ONE LEVEL UP (#78): a position numeral is scoped to one
+// THE SAME RULE, ONE LEVEL UP: a position numeral is scoped to one
 // category, and no ordering may put two categories' scores in one ranked
 // sequence. Two scores are comparable only when the same rulebook produced
 // them. That one is structural rather than tested-for — the view carries

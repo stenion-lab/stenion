@@ -85,7 +85,7 @@ export interface ProtocolMetadata<C extends ProtocolCategory = ProtocolCategory>
    * Two protocols' `safetyScore`s mean the same thing only when this field
    * agrees; scores across categories are computed from different factors under
    * different weights and are not comparable at all. Every consumer that ranks
-   * protocols must scope the ranking to one category (see #78), and API.md says
+   * protocols must scope the ranking to one category, and API.md says
    * so in the terms clients read.
    *
    * The generic parameter lets an adapter pin itself to one category

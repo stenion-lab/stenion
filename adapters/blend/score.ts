@@ -70,7 +70,7 @@ import type { BlendRawData, BlendReserveRaw } from './types.ts';
 // is timelocked (`config.rs` requires a timelock only when `status != 6`). It
 // supersedes everything: the permissionless update path panics rather than
 // moving a Setup pool. Every Setup pool found in the 2026-08-22 factory survey
-// (issue #65) held exactly $0.00 and is excluded by the market-size floor
+// held exactly $0.00 and is excluded by the market-size floor
 // regardless — this row exists so that if one is ever pointed at, it reads as
 // "never opened" rather than as a market that restricted its users.
 interface BlendStatusMeaning {

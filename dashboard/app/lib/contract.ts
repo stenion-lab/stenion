@@ -20,15 +20,16 @@ export type RunStatus = 'ok' | 'failed';
  * same thing only when this agrees: each category is scored on its own factors
  * under its own weights, so a number from one says nothing about a number from
  * another. Anything that RANKS these entries must scope the ranking to one
- * category, and a position numeral must never span two — the registry enforces
- * that in #78.
+ * category, and a position numeral must never span two — `registry-query.ts`
+ * enforces that.
  *
- * `dex` is registered but nothing is scored under it yet: its rulebook is
- * published (`methodology/dex.md`) while its weight table is still under review,
- * so no entry the API returns carries it today. It is in the union because the
- * union is the thing the registry's per-category grouping is built against, and
- * a category that appears in the data before it appears in the type is how an
- * entry ends up in the wrong ranked block.
+ * `dex` IS SCORED AND ON THE BOARD. Its factor set and its weight table are both
+ * published (`methodology/dex.md`) and one Aquarius market is scored under it, so
+ * entries the API returns do carry it and their `factors` object has two keys
+ * rather than lending's five. Both members stay in this union for the reason the
+ * second one was added before anything used it: the union is what the registry's
+ * per-category grouping is built against, and a category that reaches the data
+ * before it reaches the type is how an entry ends up in the wrong ranked block.
  */
 export type ProtocolCategory = 'lending' | 'dex';
 
@@ -179,7 +180,7 @@ export type RiskFactorMap = Record<RiskFactorKey, RiskFactor | null>;
  * genuinely doesn't apply.
  *
  * WHAT THE API ACTUALLY RETURNS, which `RiskFactorMap` above stopped being when
- * a second category shipped (#104). `RiskFactorKey` is LENDING's five, and a
+ * a second category shipped. `RiskFactorKey` is LENDING's five, and a
  * `dex` protocol's `factors` has two keys, neither of them four of those five.
  * Typing the response against the narrower map would have told this app that
  * every entry carries `oracleSafety` — a claim the API does not make and a `dex`

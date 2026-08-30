@@ -26,8 +26,8 @@ import { RevealGroup, RevealItem, type RevealTrigger } from './reveal';
  * follow in FACTOR_ORDER.
  *
  * ONE COMPONENT FOR BOTH PLACES. This renders the current score's breakdown on
- * the protocol page and a past run's breakdown in the run history (#82), from
- * the same props, because they are the same thing measured at different times.
+ * the protocol page and a past run's breakdown in the run history, from the
+ * same props, because they are the same thing measured at different times.
  * A second implementation of this layout would be free to drift into showing a
  * historical run under rules the current one no longer uses.
  *

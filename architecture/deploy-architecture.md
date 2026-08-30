@@ -40,7 +40,7 @@ runtime require, not bundled) and pins `outputFileTracingRoot` to the repo root 
 tracing is correct. On Vercel: Root Directory = `dashboard`, Build Command = `pnpm run build`.
 
 > **`@stellar/stellar-sdk` must NOT be a `serverExternalPackage`** — it was, and that is what took
-> the indexer down on the Next 15 → 16 upgrade (#96). `@stenion/adapters` compiles to CommonJS, so
+> the indexer down on the Next 15 → 16 upgrade. `@stenion/adapters` compiles to CommonJS, so
 > it reaches the SDK through the `require` condition (`lib/cjs/*`), and the SDK's CJS build does
 > `require('@noble/hashes/sha2.js')` — ESM-only since noble v2. That require works **only** on a
 > runtime with `require(esm)` (Node >= 22.12 / >= 20.19); anywhere else it throws `ERR_REQUIRE_ESM`
@@ -178,7 +178,8 @@ Counted by instrumenting `globalThis.fetch` around one `fetchRawData()` per adap
 | Aquarius, 3-token stable pool | 23 (18 simulate + 5 `getLedgerEntries`) | 17      | **40**         |
 
 **An Aquarius pool costs roughly 2.3x a Blend pool in requests, and the shape is not what was
-predicted.** Issue #101 estimated "~25 simulate calls and ~9 Horizon requests", where the simulate
+predicted.** The adapter's design estimate was "~25 simulate calls and ~9 Horizon requests", where
+the simulate
 count was dominated by `estimate_swap` probes. The simulate count landed at 18 with **no depth
 simulation at all** — `depthSafety` was deferred by question A in `methodology/dex.md`, so
 `estimate_swap` is never called — and the cost moved to **Horizon instead**, which the estimate had
@@ -202,8 +203,9 @@ it the figure would be 28.
 > `cycleFeasibility()` checks `ceil(targets / concurrency) * ATTEMPT_TIMEOUT_MS <= CYCLE_BUDGET_MS`.
 > At concurrency **1** and `ATTEMPT_TIMEOUT_MS` 10,000, the old 42,000ms budget allowed exactly
 > **four** targets — the four lending markets that were already registered — so registering **any**
-> dex market at all made the cycle infeasible, whichever market it was. That was #101's finding and
-> it was #104's blocker, independent of which pools the census turned up.
+> dex market at all made the cycle infeasible, whichever market it was. That was the finding of the
+> request-count measurement above, and it blocked registering any Aquarius pool, independent of
+> which pools the census turned up.
 >
 > | Targets          | Concurrency | Waves | Required | Against 42,000ms | Against 50,000ms  |
 > | ---------------- | ----------- | ----- | -------- | ---------------- | ----------------- |
@@ -211,13 +213,13 @@ it the figure would be 28.
 > | 5 (+1 Aquarius)  | 1           | 5     | 50,000ms | **infeasible**   | feasible, exactly |
 > | 6 (+2 Aquarius)  | 1           | 6     | 60,000ms | **infeasible**   | **infeasible**    |
 >
-> **Resolved in #104 by raising `STENION_CYCLE_BUDGET_MS` from 42,000 to 50,000, and by nothing
+> **Resolved by raising `STENION_CYCLE_BUDGET_MS` from 42,000 to 50,000, and by nothing
 > else.** Concurrency stays at 1 and `ATTEMPT_TIMEOUT_MS` stays at 10,000. The three levers were
 > weighed and two were rejected on evidence:
 >
 > - **Concurrency 2** would make five targets fit in three waves, and is the change that drew
 >   sustained `429`s from the free shared public RPC and was reverted the same day. Raising it needs
->   its own deployed RPC-tolerance measurement, which #104 did not do. (Incidentally reproduced
+>   its own deployed RPC-tolerance measurement, which has not been done. (Incidentally reproduced
 >   while running the pool census: four concurrent `simulateTransaction` streams against
 >   `mainnet.sorobanrpc.com` drew `429` on 28 of 340 reads. Not a substitute for a deployed
 >   measurement, but not encouraging either.)

@@ -9,7 +9,8 @@ assumed to hold for lending.
 (`CA6PUJLB…`, registry id `aquarius-xlm-usdc`). This section was published and reviewable _before_
 any market was scored under it, which [`../TAXONOMY.md`](../TAXONOMY.md) says is the point of
 writing it first. It was admitted as a gate-checked submission against Aquarius on Stellar mainnet
-(#100), weighted in #102, implemented in #101/#103, and registered in #104.
+in two reviews — the factor set first, the weight table second — then implemented in
+`adapters/aquarius/` and registered.
 
 **One market, and the reason is the indexer rather than the rulebook.** Aquarius runs **340** pools
 across 304 token sets — read from the router's own `get_pools_for_tokens_range` at ledger
@@ -21,9 +22,9 @@ unregistered on the registry, under `coverage.ts`'s `awaiting-capacity` status �
 and never as a finding about them.
 
 > **This rulebook is complete: two factors, each with a formula, and a reviewed weight table.** The
-> table was deliberately absent when the category was admitted (#100) and landed in its own review
-> (#102) — a weight can only ever be a type-(b) unvalidated judgment call, and arguing one inside
-> the issue that argued the factor set would have buried it. Both halves are here now, in
+> table was deliberately absent when the category was admitted and landed in a review of its own —
+> a weight can only ever be a type-(b) unvalidated judgment call, and arguing one alongside the
+> argument for the factor set would have buried it. Both halves are here now, in
 > [Factor weights](#factor-weights) and [The two dex factors](#the-two-dex-factors), and
 > `CATEGORY_FACTORS.dex` in [`../core/src/weights.ts`](../core/src/weights.ts) carries
 > `status: 'published'` to match. Every Stenion-chosen number in either formula is listed in
@@ -47,8 +48,8 @@ no source to read. Every interface claim here comes from the contract spec in th
 
 **Two dated read sets appear below, and each reading says which it is from.** The census
 readings — the 340-pool survey, the role structure, the issuer-flag sample, the kill-switch state —
-are **mainnet ledger 64,152,946, 2026-08-27T20:00Z**, taken for #100. The
-[worked example](#factor-weights) is computed from the mainnet fixtures #101 captured on
+are **mainnet ledger 64,152,946, 2026-08-27T20:00Z**, taken when the category was admitted. The
+[worked example](#factor-weights) is computed from the mainnet fixtures captured on
 **2026-08-29T09:35Z**, which live in `adapters/fixtures/aquarius/` and are checked into the repo, so
 its arithmetic can be re-derived rather than taken on trust.
 
@@ -62,9 +63,9 @@ changelog is `dex`'s.** `dex` v1 and `lending` v1 are not two editions of one ru
 not older than the other; they are two different rulebooks that each start counting at 1. The
 category is stored beside the integer because the integer alone does not identify a rulebook.
 
-| Version | Effective    | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1**   | not yet live | The initial two-factor model as documented here — `adminKeySafety` (role posture and the upgrade reaction window) and `assetControlSafety` (issuer freeze and clawback) — weighted 0.55 / 0.45. `depthSafety` is deferred (question A, option 4) and no size floor is needed by either factor that ships. The factor set was admitted in #100 and the weight table reviewed in #102; both are version **1**, because no score was ever published under the factor set alone. No run has been stamped with it; no score exists under it. |
+| Version | Effective    | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **1**   | not yet live | The initial two-factor model as documented here — `adminKeySafety` (role posture and the upgrade reaction window) and `assetControlSafety` (issuer freeze and clawback) — weighted 0.55 / 0.45. `depthSafety` is deferred (question A, option 4) and no size floor is needed by either factor that ships. The factor set was admitted first and the weight table reviewed second; both are version **1**, because no score was ever published under the factor set alone. No run has been stamped with it; no score exists under it. |
 
 One row, and it describes a rulebook nothing has been scored under yet. That is deliberate: Gate 7
 requires a category to arrive at version 1 rather than acquire a version once it starts producing
@@ -167,10 +168,10 @@ from the same 2026-08-29 capture. All four pools read the same admin posture, so
 **Both steps of the two-step admission are now done.** [`../TAXONOMY.md`](../TAXONOMY.md) admits a
 category in two reviews, and this one passed through both:
 
-|                                            |                                                                                                                           |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| **Step 1 — the factor set (#100)**         | Which failures are scored, what each factor's on-chain anchor is, what was rejected. Reviewable on its own, and reviewed. |
-| **Step 2 — the weight table (#102, this)** | What each factor's share is and what each formula computes, argued as judgment calls and labelled as such. **Done.**      |
+|                               |                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Step 1 — the factor set**   | Which failures are scored, what each factor's on-chain anchor is, what was rejected. Reviewable on its own, and reviewed. |
+| **Step 2 — the weight table** | What each factor's share is and what each formula computes, argued as judgment calls and labelled as such. **Done.**      |
 
 Between the two, `CATEGORY_FACTORS.dex` declared `status: 'pendingWeights'` and its factor entries
 carried **no `weight` property at all** — not a zero, not a placeholder — so reading a weight off one
@@ -323,7 +324,8 @@ and `FutureWASM` entries in contract instance storage; Horizon `/accounts/{G…}
 signer count, thresholds and recent activity.
 
 **This is the same factor key lending uses, and that is a decision, not an oversight.** It is
-recorded here so it is not re-litigated (open question B on #100):
+recorded here so it is not re-litigated, and it was an open question when the category was
+admitted:
 
 > Gate 0 rejects a factor that is "an existing factor rephrased, rescaled, or renamed for a new
 > audience." **"Who can change the rules under my money" is not a rephrasing of lending's question
@@ -468,7 +470,7 @@ for a classic asset and the bare string `native` for XLM, then Horizon `/account
 issuer's `flags`.
 
 > **Corrected from the submission, which named an `AssetInfo` storage key.** There is no such key;
-> #101 found the issuer in `METADATA` by probing the deployed token contracts. The Gate 8 claim is
+> The issuer was found in `METADATA` by probing the deployed token contracts. The Gate 8 claim is
 > unchanged — the issuer is read from the token contract's own instance storage, not from an
 > aggregator — only the key name was wrong. The `native` counter-example gets sharper as a result:
 > XLM's `METADATA.name` is the bare string `native`, which is why a SAC is detected from its
@@ -618,7 +620,7 @@ The 9 non-SAC wasm tokens remain what they were: a route-(a) `value: null` discl
 token and saying the read does not apply. A disclosure is not a zero and not a pass — the token is
 excluded from the computation, not graded badly by it.
 
-**Every branch above is implemented and tested (#103), and the adapter may not reinterpret it.**
+**Every branch above is implemented and tested, and the adapter may not reinterpret it.**
 The rules were written before the code, which is the order [`../TAXONOMY.md`](../TAXONOMY.md)
 requires; `adapters/aquarius/score.test.ts` now asserts each one individually, including the four
 that no live pool can reach — a reverting `get_privileged_addrs()`, a short role map, a
@@ -666,7 +668,7 @@ category cannot compute.
 is worth anyone's attention — it claims that the two numbers this rulebook publishes about one are
 as true of it as they are of a deep pool, which is a statement about the factors and not about the
 market. Nothing is excluded for size, so no pool needs a coverage entry on those grounds. Which
-pools are **registered** is a separate reviewed decision (#104) about what is worth publishing, and
+pools are **registered** is a separate reviewed decision about what is worth publishing, and
 never a statement that an unregistered pool could not be scored.
 
 ---
@@ -752,22 +754,23 @@ constants finds them, and they are **not re-argued here**, because a second argu
 integers is how two rulebooks start. Changing them on one side and not the other is a decision to
 fork them and needs its own argument — it is not an edit to one file.
 
-**Four rows, where #102's issue body predicted two — and the growth is stated rather than smoothed
+**Four rows, where the weight-table review was expected to bring two — and the growth is stated rather than smoothed
 over,** because TAXONOMY.md's rule is that a long type-(b) list is itself the finding. This one is
 not long, and both additions are accounted for: that prediction was written when this rulebook had
 **no formulas at all**, only anchors, and the two new rows are precisely the two places a formula had
 to say something the chain does not state — how seven separately-read roles become one number, and
 what a scheduled code change does to it. Neither is a preference standing in for a measurement, and
-neither introduces an integer published nowhere else. On the other side the list **shrank**: #102
-also predicted rows for `depthSafety`'s probe size, its impact-to-score mapping, and the size floor,
+neither introduces an integer published nowhere else. On the other side the list **shrank**: that
+same prediction included rows for `depthSafety`'s probe size, its impact-to-score mapping, and the size floor,
 and all three are gone because the factor and the floor are gone with them.
 
-> **Three of the four are labelled in the code by #103, not by this change.** The weights live in
-> `CATEGORY_FACTORS.dex` and carry their label there today. The other three are constants in the
-> adapter's scoring code, which does not exist yet — Gate 1's "in **both** the code and
-> `methodology/`" is discharged for them when `adapters/aquarius/score.ts` lands, and **#103 may not
-> land without them**. Recorded here so the obligation is attached to the rulebook rather than
-> remembered.
+> **Three of the four are labelled by the adapter's scoring code, not by this document.** The
+> weights live in `CATEGORY_FACTORS.dex` and carry their label there. The other three are constants
+> in `adapters/aquarius/score.ts`, which labels each one beside the branch that applies it — the
+> per-account tiers adopted from lending by reference, the reused `40` in the open-upgrade-window
+> branch, and the `40`/`70` asset-control tiers. Gate 1's "in **both** the code and `methodology/`"
+> is therefore discharged for all four. Recorded here so the obligation stays attached to the
+> rulebook rather than remembered.
 
 ---
 
@@ -805,8 +808,8 @@ canonical ordering and classifier in
 lending operation was renamed, added or removed**; renaming one would rewrite `blocked` in every
 stored `operational_state` and every API response.
 
-`OperationalLevel` stayed **one shared ladder**, and gained a rung rather than forking (open
-question C on #100, recorded here so it is not re-litigated):
+`OperationalLevel` stayed **one shared ladder**, and gained a rung rather than forking — an open
+question when the category was admitted, recorded here so it is not re-litigated:
 
 > A pool with `is_killed_swap = true` but deposits and withdrawals live would have classified as
 > `active` under the ladder as it stood — true about exit, and **wrong about the market**.

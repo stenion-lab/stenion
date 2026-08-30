@@ -2,7 +2,7 @@
 
 **The decision, up front: pause/frozen state is a published field beside the score, and it is
 deliberately not a factor, not a multiplier, and not any input to a number.** It was decided
-this way on 2026-08-25 (issue #15) after reading both protocols' contracts, and this section
+this way on 2026-08-25 after reading both protocols' contracts, and this section
 exists so it is not re-litigated by the next person who notices a paused pool with an unchanged
 score.
 

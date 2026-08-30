@@ -28,7 +28,7 @@ async function loadApiDocs(): Promise<string | null> {
       // static analysis answers "unknown path" by tracing the WHOLE repo into the
       // serverless output — a build warning, a slower deploy, and a real risk of
       // the size limit. What actually puts these files in the bundle is the
-      // route's `outputFileTracingIncludes` entry (#96), which names every part
+      // route's `outputFileTracingIncludes` entry, which names every part
       // explicitly from this same manifest; the analyser's guess was never what
       // carried them.
       API_PARTS.map((part) =>

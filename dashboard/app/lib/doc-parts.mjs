@@ -8,8 +8,8 @@
 // Plain .mjs on purpose: next.config.mjs and the App Router pages both import
 // this, and a TS module cannot be imported by the Next config. One list, so the
 // route's `outputFileTracingIncludes` cannot fall behind the files the route
-// actually reads — that gap is #96's failure mode, which is invisible in
-// `next dev` and 404s only on Vercel.
+// actually reads — that gap is the failure mode this manifest exists to close,
+// and it is invisible in `next dev` and 404s only on Vercel.
 
 /** @type {readonly string[]} */
 export const METHODOLOGY_PARTS = [

@@ -382,8 +382,8 @@ describe('toTarget — the adapter pipeline wrapper', () => {
   /**
    * A minimal adapter with its own raw shape, to prove TRawData stays internal.
    *
-   * `Adapter<{ n: number }, 'lending'>` — the category is spelled since #104,
-   * because the factor map is derived from it. A bare `Adapter<{ n: number }>`
+   * `Adapter<{ n: number }, 'lending'>` — the category is spelled out, because
+   * the factor map is derived from it. A bare `Adapter<{ n: number }>`
    * defaults the category to the whole union, so its factor map is the union of
    * every category's and `RiskFactorMap` is no longer what it owes. Naming the
    * category is the fix, and it is the same thing every real adapter does.
@@ -615,7 +615,7 @@ describe('cycleWaves + cycleFeasibility — the ceiling is arithmetic, not folkl
     assert.equal(
       at(5).feasible,
       true,
-      'five targets is #104 — the four lending markets plus one Aquarius pool',
+      'five targets today — the four lending markets plus one Aquarius pool',
     );
     assert.equal(at(6).feasible, false);
     assert.deepEqual(
@@ -626,10 +626,10 @@ describe('cycleWaves + cycleFeasibility — the ceiling is arithmetic, not folkl
     );
   });
 
-  it('was infeasible at five on the pre-#104 budget, which is why the budget moved', () => {
-    // The state #101 measured and #104 had to resolve: at the old 42s budget,
-    // registering ANY dex market at all made the cycle infeasible, whichever
-    // market it was. Pinned so the reason the default changed stays checkable
+  it('was infeasible at five on the old 42s budget, which is why it moved', () => {
+    // The state registering the first dex market had to resolve: at the old 42s
+    // budget, registering ANY dex market at all made the cycle infeasible,
+    // whichever market it was. Pinned so the reason the default changed stays checkable
     // after the default itself has moved on.
     const old = cycleFeasibility({
       targetCount: 5,

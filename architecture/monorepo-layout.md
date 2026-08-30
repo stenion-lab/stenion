@@ -54,8 +54,8 @@ small and stable. Carries `ADAPTER_INTERFACE_VERSION` as a seam for future break
 
 `Adapter`'s `TCategory` is **defaulted** to the whole `ProtocolCategory` union, which is what lets
 the indexer keep one heterogeneous `Adapter<unknown>[]` run loop across categories. It scopes three
-things to one rulebook: `metadata.category`, `operationalState`'s operation vocabulary, and — since
-#104 — the factor map, through `FactorMapFor<TCategory>`. **The factor map is derived from the
+things to one rulebook: `metadata.category`, `operationalState`'s operation vocabulary, and — as of
+interface version 4 — the factor map, through `FactorMapFor<TCategory>`. **The factor map is derived from the
 category, never named by the adapter.** Which factors a category scores is declared once in
 `CATEGORY_FACTORS`, so an adapter that declares `'dex'` owes exactly `adminKeySafety` and
 `assetControlSafety`; a map of lending's five, or of invented keys, is a compile error. The decision
@@ -96,27 +96,29 @@ lending adapters take — scores the `dex` rulebook's two factors (`adminKeySafe
 `swapDisabled` rung. It is otherwise an ordinary four-file adapter: nothing about the pipeline,
 the run loop or the storage schema needed a `dex` special case.
 
-**One market is registered to it** (#104): `AQUARIUS_POOLS` in `adapters/aquarius/types.ts`, holding
+**One market is registered to it:** `AQUARIUS_POOLS` in `adapters/aquarius/types.ts`, holding
 the XLM/USDC constant-product pool, iterated by `buildTargets` exactly as `BLEND_POOLS` is. One,
 because the registry's ceiling is the cycle budget rather than the census — 340 Aquarius pools are
 scorable and five targets fit inside the deploy's 60s ceiling, of which four were already lending.
 See `deploy-architecture.md`. The other 339 pools say so on the registry through `coverage.ts`'s
 `awaiting-capacity` status.
 
-### Decision record: the factor map is derived from the category (#103 → reviewed in #104)
+### Decision record: the factor map is derived from the category
 
-**Status: reviewed and revised.** #103 added a third `Adapter` parameter, `TFactors`, because
-nothing in that issue compiled without it, and recorded itself as unreviewed so that #104 would
-inherit a decision it could see and reopen. #104 reopened it, checked the claims, and **revised**
-rather than affirmed. What ships is `FactorMapFor<TCategory>`; the parameter is gone.
+**Status: reviewed and revised.** The change that built the first `dex` adapter's scoring half
+added a third `Adapter` parameter, `TFactors`, because nothing in it compiled without one, and
+recorded itself as unreviewed so that whoever came next would inherit a decision they could see and
+reopen. That review happened, checked the claims, and **revised** rather than affirmed. What ships
+is `FactorMapFor<TCategory>`; the parameter is gone.
 
-**What #103 did, and why it was unavoidable there.** `RiskFactorMap` is **lending's** map —
+**What `TFactors` did, and why it was unavoidable then.** `RiskFactorMap` is **lending's** map —
 `Record<RiskFactorType, RiskFactor | null>`, its five keys required. `dex` scores `adminKeySafety`
 and `assetControlSafety`, so `AquariusAdapter` could not implement `Adapter` at all: a hard compile
-failure with no local workaround that is not a lie. That was the gap #77 left — it widened
-`scoreFactors` to `<M extends FactorMap>` and parameterized `ScoreResult<M>` so the weighted mean
-could never acquire a per-category variant, and stopped one file short of the interface those two
-members are declared on. #103 opened the interface with a defaulted third parameter and moved on.
+failure with no local workaround that is not a lie. That was the gap left when the scoring engine
+was generalized — it widened `scoreFactors` to `<M extends FactorMap>` and parameterized
+`ScoreResult<M>` so the weighted mean could never acquire a per-category variant, and stopped one
+file short of the interface those two members are declared on. The interface was opened with a
+defaulted third parameter and the work moved on.
 
 **What the review found, by checking rather than reasoning.** The parameter was never related to
 `TCategory`, so both of these compiled:
@@ -149,7 +151,7 @@ export interface Adapter<
 }
 ```
 
-`ADAPTER_INTERFACE_VERSION` goes to **4**. #103's addition deliberately did not bump it — a
+`ADAPTER_INTERFACE_VERSION` goes to **4**. Adding `TFactors` deliberately did not bump it — a
 defaulted parameter is not something an implementor must react to — and removing one that an
 implementor did name is. Exactly one adapter named it.
 
@@ -157,16 +159,16 @@ Guarded rather than left to review: `core/src/weights.test.ts` carries three `@t
 interface probes — a `dex` adapter returning lending's map, one returning an invented key, and the
 correct shape with no directive — checked by `pnpm typecheck` alongside the sources.
 
-**Two claims in the #103 record were wrong, and are corrected here rather than left standing.** Both
+**Two claims in the earlier record were wrong, and are corrected here rather than left standing.** Both
 were argued rather than compiled, which is worth noting in a section about a decision that turned on
 compiling things.
 
-| #103 claimed                                                                                                                                                                    | Actually                                                                                                                                                                                                                                                                                                                                          |
+| The earlier record claimed                                                                                                                                                      | Actually                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `FactorMapFor<TCategory>` "would resolve the default `TCategory = ProtocolCategory` to a map requiring **every** category's keys at once, breaking the bare `Adapter<unknown>`" | Only if written non-distributively — which is the same trap `OperationFor` in `operational-state.ts` records being written carefully to survive. Written as a mapped type indexed by `C`, the default resolves to the **union** of every category's map, `Adapter<unknown>` types, and the indexer's run loop is unaffected. Checked, not argued. |
-| Spelling the members against the open `FactorMap` would "ripple straight into the indexer and the store — a much larger change than the one it avoids"                          | The ripple is real and #104 made it deliberately: `RunRecord`/`ProtocolDetail`/`HistoryEntry` are `FactorMap` now (below). That is the right place for an open type — storage enforces no rulebook — and the wrong place is the adapter boundary, which is exactly where the rulebook IS enforced.                                                |
+| Spelling the members against the open `FactorMap` would "ripple straight into the indexer and the store — a much larger change than the one it avoids"                          | The ripple is real and this change made it deliberately: `RunRecord`/`ProtocolDetail`/`HistoryEntry` are `FactorMap` now (below). That is the right place for an open type — storage enforces no rulebook — and the wrong place is the adapter boundary, which is exactly where the rulebook IS enforced.                                         |
 
-**The open question #103 left for a reviewer is now answered.** It asked whether the right end state
+**The open question that record left for a reviewer is now answered.** It asked whether the right end state
 is per-category factor-map types everywhere, or one open `FactorMap` from the adapter all the way
 through storage. Neither, and the split is the answer: **derived per-category types at the adapter
 boundary, one open `FactorMap` from the indexer's `IndexTarget` through storage and out to the API.**
@@ -176,7 +178,7 @@ storage and transport layers are category-agnostic by design — `recordRun` ins
 are not in a position to make, and `toHistoryEntry`'s old `row.factors as RiskFactorMap` was that
 claim being made and being wrong.
 
-#### `@stenion/db` carries any category's factor map, as of #104
+#### `@stenion/db` carries any category's factor map
 
 **The storage always round-tripped; the types did not, and now they do.**
 
@@ -198,7 +200,7 @@ claim being made and being wrong.
   gained a `dex` case that writes a two-key map through `insertRunRecord` and reads it back through
   `getProtocolDetail`, asserting the top-level `factors` and the history row each come back with
   exactly `adminKeySafety` and `assetControlSafety`, and that no lending key appears. It is still
-  skipped unless `STENION_TEST_DATABASE_URL` is set, so CI needs no credentials; it was run for #104
+  skipped unless `STENION_TEST_DATABASE_URL` is set, so CI needs no credentials; it was run
   against a throwaway Postgres 16 with all eight migrations applied.
 
 **One adapter can serve several markets.** `BlendAdapter` takes a `BlendPool` — slug, display name,
@@ -422,7 +424,7 @@ still recorded as `failed` — a protocol that is genuinely down still shows as 
   `STENION_RPC_URL` is `mainnet.sorobanrpc.com`: the free, shared, keyless public endpoint, whose
   rate limit is unpublished and not ours to raise.
 
-  **What happened.** #68 shipped the worker pool at concurrency 2. Within one cycle, Blend — the
+  **What happened.** The worker pool shipped at concurrency 2. Within one cycle, Blend — the
   target that runs _behind_ the concurrent pair — began failing with
   `Request failed with status code 429`, recorded only after all three retry attempts were
   exhausted. Measured from `risk_scores` via `/api/v1/protocol/:id`:
@@ -449,15 +451,15 @@ still recorded as `failed` — a protocol that is genuinely down still shows as 
   **The fix, applied.** Both halves together, not either alone:
 
   - `STENION_CYCLE_CONCURRENCY` default **2 → 1**. Removes the burst entirely. It does **not**
-    reinstate the bug #68 fixed: budget division is gone independently of concurrency, so at 1 each
+    reinstate the budget-division bug: budget division is gone independently of concurrency, so at 1 each
     target still gets the budget less a reservation rather than a shrinking even share.
   - `STENION_ATTEMPT_TIMEOUT_MS` default **15s → 10s**. Needed _because_ of the first: at 1 worker a
     15s timeout makes `cycleFeasibility` infeasible at three targets (`3 × 15s = 45s > 42s`) and
     warn on every cycle. 10s is justified by the measurement rather than guessed — nothing healthy
     exceeds 6.1s deployed — and made a sequential cycle feasible to **four** targets
-    (`4 × 10s = 40s ≤ 42s`), so #65's Etherfuse needed no further config change.
+    (`4 × 10s = 40s ≤ 42s`), so registering Etherfuse needed no further config change.
 
-  **Now standing at five, and the budget moved to get there (#104).** Registering the first dex
+  **Now standing at five, and the budget moved to get there.** Registering the first dex
   market was the registration that tripped the ceiling, exactly as predicted: a fifth target needs
   50,000ms of attempts, which the 42s budget did not have. `STENION_CYCLE_BUDGET_MS` is now
   **50,000**, raised against three `curl`ed deployed cycles rather than against arithmetic — see
@@ -499,14 +501,14 @@ still recorded as `failed` — a protocol that is genuinely down still shows as 
 
   **These are two to three times faster than the developer-machine figures they replace** (which
   were Blend 6.0–7.5s, Kinetic 7.7–10.5s, YieldBlox 8.1–12.5s, 24.5–26.9s sequential, measured
-  2026-08-19). Vercel's path to the RPC is simply not a laptop's, which is why the issue insisted on
-  measuring from the deployed function rather than trusting arithmetic over local timings. Two
+  2026-08-19). Vercel's path to the RPC is simply not a laptop's, which is why these figures must
+  come from the deployed function rather than from arithmetic over local timings. Two
   consequences worth stating: the whole cycle uses under a fifth of its 42s budget, and the 15s
   attempt timeout is now roughly 2.5x the slowest healthy fetch rather than barely above it.
 
   **The 4-target case is now measured; the 5-target case is not.** Three deployed cycles were
   `curl`ed from the cron route on 2026-08-29 at four targets — `totalMs` 15,482 / 15,627 / 16,759,
-  per-target 2,412–6,363ms — and those are the numbers #104 raised the budget against. The fifth
+  per-target 2,412–6,363ms — and those are the numbers the budget was raised against. The fifth
   target, `aquarius-xlm-usdc`, has **no deployed measurement yet**: it cannot have one until it is
   deployed, since the cron route reports `durationMs` per registered target. Its local wall-clock is
   8,929ms against Blend's 5,545ms on the same machine in the same cycle, and its request count is
@@ -516,7 +518,8 @@ still recorded as `failed` — a protocol that is genuinely down still shows as 
 
   **One thing to watch on the first deployed cycles.** Etherfuse's `fetchRawData` was observed
   locally at 8.0s and 12.2s in two consecutive runs against the shared public RPC — the second past
-  the 10s attempt timeout. Local timings are exactly what the #68 incident says never to reason from,
+  the 10s attempt timeout. Local timings are exactly what the 429 incident above says never to
+  reason from,
   so this is written down as the thing to check in the cron route's per-target `durationMs`, not as a
   claim about production or as grounds to move a knob.
 

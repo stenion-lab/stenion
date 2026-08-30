@@ -30,7 +30,7 @@
 // oracle reports 14 decimals where both others report 7, so every fixed-point
 // divide that reads `oracleDecimals` is only genuinely tested here.
 //
-// EIGHT FIXTURES, THREE ADAPTERS, TWO CATEGORIES since #103. The four Aquarius
+// EIGHT FIXTURES, THREE ADAPTERS, TWO CATEGORIES. The four Aquarius
 // pools are scored under the `dex` rulebook — two factors, not lending's five —
 // and they are here for the same reason the lending four are: the synthetic
 // suite in `aquarius/score.test.ts` picks convenient issuer flags and identical
@@ -68,8 +68,8 @@ import { aquariusWasmTokenMainnet } from './fixtures/aquarius/wasm-token-mainnet
 import { DEX_FACTORS } from '@stenion/core';
 import type { FactorMap, RiskFactor } from '@stenion/core';
 
-// Takes `FactorMap`, not `RiskFactorMap`: since #103 this file reads two
-// categories' maps and lending's five-key type cannot describe the dex one.
+// Takes `FactorMap`, not `RiskFactorMap`: this file reads two categories' maps
+// and lending's five-key type cannot describe the dex one.
 // `RiskFactorMap` is assignable to it, so every lending call site is unchanged.
 const values = (f: FactorMap) =>
   Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v === null ? null : v.value]));
@@ -204,8 +204,8 @@ describe('Kinetic — frozen mainnet snapshot', () => {
 
   it('names the one genuinely worst reserve when there is no tie', async () => {
     // At capture, XLM — 94% of the pool — was the sole reserve at freshness 0,
-    // with PYUSD at 31. This is the fixture that disproves #45's premise that
-    // oracleSafety traced to the dust reserve: the dust reserve was not even the
+    // with PYUSD at 31. This is the fixture that disproves the bug report's
+    // premise that oracleSafety traced to the dust reserve: the dust reserve was not even the
     // worst one here.
     const factors = await new KineticAdapter().computeRiskFactors(kineticMainnet);
     assert.match(factors.oracleSafety!.detail, /^worst reserve \(CAS3J7…\)/);
@@ -473,10 +473,11 @@ describe('Etherfuse — frozen mainnet snapshot (same adapter, third pool)', () 
   });
 
   it('publishes operationalState active without touching the factor map', async () => {
-    // The #15 rule checked on the newest entry. Both adapter suites already
-    // assert the byte-identical-factor-map half; what this pins is that a market
-    // registered AFTER #15 shipped actually populates the field from its own
-    // PoolConfig.status rather than falling back to a default.
+    // The published-never-scored rule checked on the newest entry. Both adapter
+    // suites already assert the byte-identical-factor-map half; what this pins is
+    // that a market registered after `operationalState` shipped actually
+    // populates the field from its own PoolConfig.status rather than falling
+    // back to a default.
     const state = adapter().operationalState(etherfuseMainnet);
     assert.equal(state.level, 'active');
     assert.equal(state.source, 'PoolConfig.status = 1');
@@ -503,7 +504,7 @@ describe('all three Blend pools — one engine, three markets', () => {
   });
 
   it('declare the lending category, on every pool', async () => {
-    // Required as of ADAPTER_INTERFACE_VERSION 3 (#76). Asserted per pool rather
+    // Required as of ADAPTER_INTERFACE_VERSION 3. Asserted per pool rather
     // than once on the class, for the same reason `contractId` is: metadata is
     // built per instance from the pool it was handed, so "the class sets it" and
     // "every instance has it" are different claims.
@@ -563,7 +564,7 @@ describe('all three Blend pools — one engine, three markets', () => {
  * would be handed.
  *
  * THE FIRST ENTRY IS THE REGISTERED MARKET and its identity is IMPORTED from
- * `AQUARIUS_POOLS` (#104), not written out here — a snapshot that pinned a
+ * `AQUARIUS_POOLS`, not written out here — a snapshot that pinned a
  * hand-typed pool would keep passing after the registry moved to a different
  * one, which is the failure this file exists to catch. The other four are branch
  * fixtures for markets nothing publishes a number about, so they declare the
@@ -639,7 +640,7 @@ const AQUARIUS_SNAPSHOTS = [
  * BY LABEL, NOT BY INDEX. The assertions below each need a SPECIFIC pool — the
  * three-token stable one, the one holding a wasm token — and reading them out of
  * the array positionally meant that inserting the registered market at the front
- * (#104) silently repointed four tests at different pools, three of which then
+ * silently repointed four tests at different pools, three of which then
  * failed and one of which would have kept passing while covering nothing. A name
  * cannot be shifted by an insertion.
  */
@@ -795,7 +796,8 @@ describe('Aquarius — frozen mainnet snapshots, every captured pool', () => {
   });
 
   it('publishes operationalState active on every one without touching the factor map', async () => {
-    // The #15 rule on the newest category. None of the captured pools has a
+    // The published-never-scored rule on the newest category. None of the
+    // captured pools has a
     // kill switch set, so `active` here is a reading rather than a default; the
     // synthetic suite is what walks all 32 states.
     for (const snap of AQUARIUS_SNAPSHOTS) {

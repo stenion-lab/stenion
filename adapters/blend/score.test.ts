@@ -721,7 +721,7 @@ describe('minimum-size filter — excluding everything still cannot publish 100'
 // oracleSafety reporting: Blend's reserves are priced in one publish round, so
 // their ages are identical and they ALWAYS tie on freshness. Naming one of them
 // "worst" was pure iteration order across the whole stored history — a string
-// that reads as a finding while carrying no information. See #45.
+// that reads as a finding while carrying no information.
 // ---------------------------------------------------------------------------
 
 describe('oracleSafety — identical reserves are reported as identical', () => {
@@ -756,7 +756,7 @@ describe('oracleSafety — identical reserves are reported as identical', () => 
   });
 });
 
-describe('oracleSafety — per-feed price ages are disclosed (#47/#48)', () => {
+describe('oracleSafety — per-feed price ages are disclosed', () => {
   it('publishes the disclosure on a healthy pool too, not only a stale one', async () => {
     // Blend prices every reserve in one aggregator round, so this is normally
     // unremarkable. Publishing it anyway is the point: a disclosure that only
@@ -784,7 +784,7 @@ describe('oracleSafety — per-feed price ages are disclosed (#47/#48)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Operational state (issue #15) — published, never scored
+// Operational state — published, never scored
 // ---------------------------------------------------------------------------
 
 describe('operationalState — the seven Blend pool statuses', () => {
@@ -872,8 +872,8 @@ describe('operationalState — the seven Blend pool statuses', () => {
 
 describe('operationalState never reaches a score', () => {
   it('produces a byte-identical factor map across all seven statuses', async () => {
-    // THE CORRECTNESS CHECK FOR THIS WHOLE DECISION. Issue #15 chose to publish
-    // pause state rather than grade it, and this is what makes that a property
+    // THE CORRECTNESS CHECK FOR THIS WHOLE DECISION. Pause state is published
+    // rather than graded, and this is what makes that a property
     // of the code rather than an intention: if any status ever moves any factor,
     // the rulebook has silently acquired a sixth signal and the category version
     // is wrong. A before/after score table could not prove this — every live
