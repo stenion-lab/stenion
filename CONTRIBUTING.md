@@ -462,6 +462,22 @@ Then, iterating on your adapter:
    captured-mainnet snapshots go in `adapters/snapshot.test.ts` instead, since they pin more than
    one adapter and belong to no single folder.
 
+   **Read ledger entries through `adapters/ledger-entries.ts`, never `server.getLedgerEntries`
+   directly.** Soroban RPC takes up to 200 keys per call, so a `fetch.ts` that reads one key at a
+   time turns every reserve, token or admin lookup into its own request against an endpoint that
+   rate-limits on request count — the failure mode behind the concurrency incident in
+   `architecture/`. Collect the keys your fetch needs and hand them to `readLedgerEntries` in one
+   call; look results up with `LedgerEntries.get(key)`, which returns `null` for a key with no
+   entry. Three things that module handles and hand-rolled code reliably gets wrong: the response
+   **omits** absent keys (so nothing may be read by array position), a **duplicate** key fails the
+   entire call, and a transport failure must throw rather than resolve as a batch of absences. See
+   `architecture/`'s "How adapters read the chain" for the measured numbers and the endpoint
+   behaviours each rule comes from.
+
+   Batching applies only to `getLedgerEntries`. `simulateTransaction` is one transaction per call
+   and cannot be batched, so a getter is always a request — which makes "can this be read from a
+   ledger entry instead of a getter?" a real question when a fetch is expensive.
+
 2. Register it in the indexer's `buildTargets()` ([`indexer/src/index.ts`](indexer/src/index.ts))
    via the existing `toTarget<T>()` wrapper — that's what lets your adapter's `TRawData` coexist in
    one typed run loop with the others.

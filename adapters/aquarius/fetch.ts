@@ -19,7 +19,6 @@
 
 import {
   Account,
-  Address,
   BASE_FEE,
   Contract,
   Keypair,
@@ -29,6 +28,7 @@ import {
 } from '@stellar/stellar-sdk';
 import { rpc } from '@stellar/stellar-sdk';
 
+import { contractInstanceKey, readLedgerEntries } from '../ledger-entries.ts';
 import {
   AQUARIUS_POOL_TYPES,
   AQUARIUS_ROLES,
@@ -79,36 +79,34 @@ async function readContract(
   return scValToNative(retval);
 }
 
+/** A contract's instance entry, decoded: its executable and its instance storage. */
+export interface AquariusInstance {
+  executableType: string;
+  runningWasm: string | null;
+  storage: Map<string, xdr.ScVal>;
+}
+
 /**
  * A contract's instance entry: its executable and its instance storage.
  *
  * Returns null when the contract has no instance entry at all, which is a real
  * reading about the address rather than an error — the caller decides what it
  * means, because it means different things for a pool and for a token.
+ *
+ * PURE, over an entry already read. Every instance entry this adapter needs —
+ * the pool's, the router's, and one per reserve token — is fetched in a single
+ * `getLedgerEntries` call by `fetchAquariusRawData`, so decoding cannot be the
+ * thing that decides when a read happens. A null argument (the key came back
+ * with no entry) and a null return mean the same thing they always did.
  */
-async function readInstance(
-  server: rpc.Server,
-  contractId: string,
-): Promise<{
-  executableType: string;
-  runningWasm: string | null;
-  storage: Map<string, xdr.ScVal>;
-} | null> {
-  const key = xdr.LedgerKey.contractData(
-    new xdr.LedgerKeyContractData({
-      contract: new Address(contractId).toScAddress(),
-      key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
-    }),
-  );
-  const resp = await server.getLedgerEntries(key);
-  if (resp.entries.length === 0) return null;
+function decodeInstance(entry: xdr.LedgerEntryData | null): AquariusInstance | null {
+  if (entry === null) return null;
 
-  const instance = resp.entries[0].val.contractData().val().instance();
+  const instance = entry.contractData().val().instance();
   const storage = new Map<string, xdr.ScVal>();
-  for (const entry of instance.storage() ?? []) {
-    const name = instanceKeyName(entry.key());
-    if (name !== null) storage.set(name, entry.val());
+  for (const storageEntry of instance.storage() ?? []) {
+    const name = instanceKeyName(storageEntry.key());
+    if (name !== null) storage.set(name, storageEntry.val());
   }
 
   const executable = instance.executable();
@@ -419,13 +417,19 @@ async function readIssuerFlags(horizonUrl: string, issuer: string): Promise<Aqua
   }
 }
 
-/** Read one reserve token: what kind of contract it is, and who can control it. */
+/**
+ * Read one reserve token: what kind of contract it is, and who can control it.
+ *
+ * The token's instance entry arrives already read — it travelled in the same
+ * `getLedgerEntries` call as the pool's, the router's and every other token's.
+ * What remains here is Horizon, which has no batch form: an issuing account is
+ * one HTTP GET whether or not anything else was batched.
+ */
 async function readToken(
-  server: rpc.Server,
   horizonUrl: string,
   address: string,
+  instance: AquariusInstance | null,
 ): Promise<AquariusTokenRaw> {
-  const instance = await readInstance(server, address);
   const isStellarAsset = instance?.executableType === STELLAR_ASSET_EXECUTABLE;
 
   let code: string | null = null;
@@ -508,13 +512,20 @@ export function unrecognisedPoolType(poolId: string, value: unknown): string {
 // The fetch itself
 // ---------------------------------------------------------------------------
 
-/** Read the protocol-wide router state shared by every pool. */
+/**
+ * Read the protocol-wide router state shared by every pool.
+ *
+ * `instance` is passed in for the same reason a token's is: the router's
+ * instance key is known before any call is made (it is a module constant), so
+ * it rides in the pool's one batched `getLedgerEntries` rather than costing a
+ * round trip of its own.
+ */
 async function fetchRouter(
   server: rpc.Server,
   horizonUrl: string,
   accountCache: Map<string, AquariusRoleRaw['accounts'][number]>,
+  instance: AquariusInstance | null,
 ): Promise<AquariusRouterRaw> {
-  const instance = await readInstance(server, AQUARIUS_ROUTER_ID);
   const [contractName, version, emergencyMode] = await Promise.all([
     readContract(server, AQUARIUS_ROUTER_ID, 'contract_name'),
     readContract(server, AQUARIUS_ROUTER_ID, 'version'),
@@ -555,8 +566,6 @@ export async function fetchAquariusRawData(target: {
   const poolTypeNative = await readContract(server, poolId, 'pool_type');
   const poolType = asPoolType(poolTypeNative);
   if (poolType === null) throw new Error(unrecognisedPoolType(poolId, poolTypeNative));
-
-  const instance = await readInstance(server, poolId);
 
   // Kill flags and emergency mode go through the GETTERS, never instance
   // storage — see AquariusKillFlagsRaw for the three reasons.
@@ -604,14 +613,45 @@ export async function fetchAquariusRawData(target: {
     claim: killedClaim === true,
   };
 
+  // EVERY INSTANCE ENTRY THIS POOL NEEDS, IN ONE CALL: the pool's own, the
+  // router's, and one per reserve token. All three kinds are independent reads
+  // of the same ledger — the only reason they used to be 2 + T separate calls
+  // is that each decoder fetched what it needed where it needed it. The token
+  // keys are the ones that scale: a three-token pool cost five calls where this
+  // costs one, and the shared public endpoint rate-limits on request count.
+  //
+  // The pool's instance is read HERE rather than before the getters above, so
+  // that the token addresses `get_tokens()` returns are known in time to join
+  // the same call. Nothing observable depends on the order — `readUpgrade` is
+  // pure and `fetchedAt` is stamped at the end, as before.
+  const poolInstanceKey = contractInstanceKey(poolId);
+  const routerInstanceKey = contractInstanceKey(AQUARIUS_ROUTER_ID);
+  const instances = await readLedgerEntries(server, [
+    poolInstanceKey,
+    routerInstanceKey,
+    ...tokens.map(contractInstanceKey),
+  ]);
+  const instance = decodeInstance(instances.get(poolInstanceKey));
+
   const reserveTokens: AquariusTokenRaw[] = [];
   for (const address of tokens) {
-    reserveTokens.push(await readToken(server, horizonUrl, address));
+    reserveTokens.push(
+      await readToken(
+        horizonUrl,
+        address,
+        decodeInstance(instances.get(contractInstanceKey(address))),
+      ),
+    );
   }
 
   const roles = await readRoles(server, horizonUrl, poolId, accountCache);
   const upgrade = readUpgrade(instance);
-  const router = await fetchRouter(server, horizonUrl, accountCache);
+  const router = await fetchRouter(
+    server,
+    horizonUrl,
+    accountCache,
+    decodeInstance(instances.get(routerInstanceKey)),
+  );
 
   return {
     poolId,

@@ -18,6 +18,13 @@ import {
 } from '@stellar/stellar-sdk';
 import { rpc } from '@stellar/stellar-sdk';
 
+import {
+  contractDataKey,
+  contractInstanceKey,
+  readLedgerEntries,
+  type LedgerEntries,
+  type LedgerEntrySource,
+} from '../ledger-entries.ts';
 import { NETWORK_PASSPHRASE } from './types.ts';
 import type {
   AssetConfigNative,
@@ -38,69 +45,89 @@ import type {
 // RPC helpers
 // ---------------------------------------------------------------------------
 
-function persistentContractDataKey(contractId: string, key: xdr.ScVal): xdr.LedgerKey {
-  return xdr.LedgerKey.contractData(
-    new xdr.LedgerKeyContractData({
-      contract: new Address(contractId).toScAddress(),
-      key,
-      durability: xdr.ContractDataDurability.persistent(),
-    }),
-  );
-}
-
-/** Read a pool's contract *instance* storage (holds Config, Admin, etc.) into a name->ScVal map. */
-async function readInstanceStorage(
-  server: rpc.Server,
+/**
+ * Decode a contract *instance* entry's storage (Config, Admin, BaseAssets…)
+ * into a name->ScVal map.
+ *
+ * Takes the already-read entry rather than fetching it: which keys this
+ * adapter reads is decided in `fetchBlendRawData`, where they are collected and
+ * dispatched together. A null entry is the same failure it always was — a
+ * contract with no instance entry is not a pool we can read.
+ */
+function instanceStorage(
+  entry: xdr.LedgerEntryData | null,
   contractId: string,
-): Promise<Map<string, xdr.ScVal>> {
-  const key = xdr.LedgerKey.contractData(
-    new xdr.LedgerKeyContractData({
-      contract: new Address(contractId).toScAddress(),
-      key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
-    }),
-  );
-  const resp = await server.getLedgerEntries(key);
-  if (resp.entries.length === 0) {
+): Map<string, xdr.ScVal> {
+  if (entry === null) {
     throw new Error(`Blend: no instance entry for contract ${contractId}`);
   }
-  const instance = resp.entries[0].val.contractData().val().instance();
+  const instance = entry.contractData().val().instance();
   const storage = instance.storage() ?? [];
   const out = new Map<string, xdr.ScVal>();
-  for (const entry of storage) {
-    const name = scValToNative(entry.key());
-    if (typeof name === 'string') out.set(name, entry.val());
+  for (const storageEntry of storage) {
+    const name = scValToNative(storageEntry.key());
+    if (typeof name === 'string') out.set(name, storageEntry.val());
   }
   return out;
 }
 
-/** Read one reserve's ResConfig + ResData persistent entries and normalize field names. */
-async function readReserve(
-  server: rpc.Server,
-  poolId: string,
-  asset: string,
-): Promise<Omit<BlendReserveRaw, 'price' | 'priceConfig'>> {
-  const configKey = persistentContractDataKey(
+/** Read one contract's instance storage on its own — one key, so nothing to batch it with. */
+async function readInstanceStorage(
+  server: LedgerEntrySource,
+  contractId: string,
+): Promise<Map<string, xdr.ScVal>> {
+  const key = contractInstanceKey(contractId);
+  const entries = await readLedgerEntries(server, [key]);
+  return instanceStorage(entries.get(key), contractId);
+}
+
+/**
+ * The `ResConfig` persistent-storage key for one reserve of one pool.
+ *
+ * Exported, with `reserveDataKey` and `decodeReserve`, for `fetch.test.ts`: a
+ * batch spanning two pools is the case keyed demultiplexing exists for, and it
+ * cannot be produced from live data without registering a second pool.
+ */
+export function reserveConfigKey(poolId: string, asset: string): xdr.LedgerKey {
+  return contractDataKey(
     poolId,
     xdr.ScVal.scvVec([xdr.ScVal.scvSymbol('ResConfig'), new Address(asset).toScVal()]),
   );
-  const dataKey = persistentContractDataKey(
+}
+
+/** The `ResData` persistent-storage key for one reserve of one pool. */
+export function reserveDataKey(poolId: string, asset: string): xdr.LedgerKey {
+  return contractDataKey(
     poolId,
     xdr.ScVal.scvVec([xdr.ScVal.scvSymbol('ResData'), new Address(asset).toScVal()]),
   );
+}
 
-  const resp = await server.getLedgerEntries(configKey, dataKey);
-  let config: ReserveConfigNative | undefined;
-  let data: ReserveDataNative | undefined;
-  for (const entry of resp.entries) {
-    const native = scValToNative(entry.val.contractData().val()) as Record<string, unknown>;
-    // ResData is the only one carrying b_rate; use it to disambiguate the two entries.
-    if ('b_rate' in native) data = native as unknown as ReserveDataNative;
-    else if ('c_factor' in native) config = native as unknown as ReserveConfigNative;
-  }
-  if (!config || !data) {
+/**
+ * Pull one reserve's ResConfig + ResData out of an already-read batch and
+ * normalize field names.
+ *
+ * EACH ENTRY IS FOUND BY ITS OWN KEY. The previous per-reserve version asked
+ * for the two keys in one call and then told them apart by SNIFFING the decoded
+ * value (`'b_rate' in native` meant ResData), because a two-entry response
+ * carried no other way to say which was which. That sniff cannot survive
+ * batching: a batch holds every reserve of the pool, so "the entry with a
+ * b_rate in it" no longer identifies a reserve, only a shape. Keyed lookup
+ * removes the question — the ResData key returns this asset's ResData or
+ * nothing at all.
+ */
+export function decodeReserve(
+  entries: LedgerEntries,
+  poolId: string,
+  asset: string,
+): Omit<BlendReserveRaw, 'price' | 'priceConfig'> {
+  const configEntry = entries.get(reserveConfigKey(poolId, asset));
+  const dataEntry = entries.get(reserveDataKey(poolId, asset));
+  if (configEntry === null || dataEntry === null) {
     throw new Error(`Blend: missing ResConfig/ResData for asset ${asset} in pool ${poolId}`);
   }
+  const config = scValToNative(configEntry.contractData().val()) as unknown as ReserveConfigNative;
+  const data = scValToNative(dataEntry.contractData().val()) as unknown as ReserveDataNative;
 
   return {
     asset,
@@ -341,12 +368,18 @@ async function gradingRead<T>(
  * here, because they are two of the three reads the oracle-legibility
  * precondition probes: fetching them here as well would either double the RPC
  * calls or make the precondition unable to say which read was missing.
+ *
+ * `instance` arrives the same way, and for the batching reason rather than the
+ * precondition one: the oracle's instance key travels in the same
+ * `getLedgerEntries` call as every reserve's ResConfig/ResData, so it is read
+ * before this function is reached rather than by it.
  */
 async function readOracleConfig(
   server: rpc.Server,
   oracleId: string,
   maxAgeNative: unknown,
   oraclesNative: unknown,
+  instance: Map<string, xdr.ScVal>,
 ): Promise<BlendOracleConfigRaw> {
   const maxAge = Number(maxAgeNative as number | bigint);
   const oracles = oraclesNative as OracleConfigNative[];
@@ -362,7 +395,6 @@ async function readOracleConfig(
   if (Array.isArray(base) && base[0] === 'Stellar' && typeof base[1] === 'string') {
     baseAssets.add(base[1]);
   }
-  const instance = await readInstanceStorage(server, oracleId);
   const baseAssetsScv = instance.get('BaseAssets');
   if (baseAssetsScv) {
     for (const entry of (scValToNative(baseAssetsScv) as unknown[]) ?? []) {
@@ -521,16 +553,42 @@ export async function fetchBlendRawData(target: {
   });
   if (notGradable) throw new Error(notGradable);
 
+  // EVERY REMAINING LEDGER KEY, IN ONE CALL. The oracle's instance entry and
+  // both persistent entries of every reserve are independent reads of the same
+  // ledger, so they go out together rather than as 1 + 2N round trips against
+  // an endpoint that rate-limits on request count. Nothing about WHEN they are
+  // read changes what they say: a `getLedgerEntries` call is a snapshot of one
+  // ledger either way, and reading them together is if anything more coherent
+  // than reading them across N ledgers.
+  //
+  // Deliberately after the precondition throw, so a pool whose oracle cannot be
+  // graded still costs the same reads it did before — the failure path did not
+  // get more expensive to make the happy path cheaper.
+  const oracleInstanceKey = contractInstanceKey(oracleId);
+  const entries = await readLedgerEntries(server, [
+    oracleInstanceKey,
+    ...reserveList.flatMap((asset) => [
+      reserveConfigKey(poolId, asset),
+      reserveDataKey(poolId, asset),
+    ]),
+  ]);
+
   // Past the precondition, none of the three can still be ABSENT — that is
   // exactly what `oracleNotGradable` returning null means. The cast records
   // the invariant the compiler cannot carry across the throw above; the other
   // two are already `unknown` and are narrowed inside readOracleConfig.
-  const oracleConfig = await readOracleConfig(server, oracleId, maxAgeNative, oraclesNative);
+  const oracleConfig = await readOracleConfig(
+    server,
+    oracleId,
+    maxAgeNative,
+    oraclesNative,
+    instanceStorage(entries.get(oracleInstanceKey), oracleId),
+  );
   const assetConfigs = decodeAssetConfigs(assetConfigsScv as xdr.ScVal);
 
   const reserves: BlendReserveRaw[] = [];
   for (const asset of reserveList) {
-    const base = await readReserve(server, poolId, asset);
+    const base = decodeReserve(entries, poolId, asset);
     const price = await readOraclePrice(server, oracleId, asset);
     reserves.push({ ...base, price, priceConfig: assetConfigs.get(asset) ?? null });
   }
