@@ -137,8 +137,10 @@ export interface AquariusPool {
  * and the indexer's answer is a hard number: `cycleFeasibility()` allows
  * `ceil(targets / concurrency) * attemptTimeoutMs <= budgetMs`, and at
  * concurrency 1, a 10s attempt timeout and a budget that must stay inside
- * Vercel Hobby's 60s `maxDuration`, that ceiling is **five targets**. Four are
- * lending. So the ceiling on this list is deployment capacity, not the census.
+ * Vercel Hobby's 60s `maxDuration`, that ceiling is **five targets per
+ * invocation** — five in total until a second shard is provisioned, since
+ * sharding multiplies it by the number of cron jobs. Four are lending. So the
+ * ceiling on this list is deployment capacity, not the census.
  *
  * The census is real and was re-read for this decision at ledger 64,182,824 on
  * 2026-08-29: 340 pools across 304 token sets, 272 constant_product / 42 stable
@@ -220,10 +222,16 @@ export const AQUARIUS_XLM_USDC: AquariusPool = {
  * as `BLEND_POOLS` is, so registering a market is one entry here and nothing in
  * the indexer.
  *
- * ONE ENTRY IS NOT A PLACEHOLDER — it is the target budget, spent. Adding a
- * second requires a deployed per-target `durationMs` for this one and then a
- * LOWERED `STENION_ATTEMPT_TIMEOUT_MS`, not a raised budget: the budget is
- * already at 50s against a 60s hard ceiling. See `architecture/deploy-architecture.md`.
+ * ONE ENTRY IS NOT A PLACEHOLDER — it is the target budget, spent. What that
+ * budget IS changed on 2026-08-30: the five-target ceiling is per serverless
+ * invocation, and sharding splits the registry across several, so a second entry
+ * needs a shard with a free slot rather than a lowered
+ * `STENION_ATTEMPT_TIMEOUT_MS`. Provisioning that shard is a cron-job.org job,
+ * not a code change — see `architecture/deploy-architecture.md`.
+ *
+ * The deployed `durationMs` this comment used to ask for has been taken, and it
+ * is 1.5-1.6s: this pool is the FASTEST target in the registry, not the slowest,
+ * against an estimate of 5.5-8.7s built from its request count.
  */
 export const AQUARIUS_POOLS: readonly AquariusPool[] = [AQUARIUS_XLM_USDC];
 

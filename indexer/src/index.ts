@@ -30,13 +30,16 @@ import { closePool, createStore, getPool, type Store } from '@stenion/db';
 import { webhookNotifier } from './alerts';
 import { ConfigError, loadConfig, type IndexerConfig } from './config';
 import {
+  SINGLE_SHARD,
   cycleFeasibility,
   feasibilityWarning,
   orderByLatency,
   runCycle,
+  selectShard,
   toTarget,
   type CycleOptions,
   type IndexTarget,
+  type ShardSpec,
 } from './cycle';
 
 // The run loop itself lives in ./cycle so it can be tested without this file's
@@ -44,11 +47,15 @@ import {
 // because @stenion/indexer's entry point is this module — the package's public
 // surface is unchanged.
 export {
+  SINGLE_SHARD,
   cycleFeasibility,
   feasibilityWarning,
   orderByLatency,
+  resolveShardSpec,
   runCycle,
+  selectShard,
   targetDeadline,
+  targetHash,
   toTarget,
 } from './cycle';
 export type {
@@ -57,6 +64,8 @@ export type {
   CycleRunResult,
   CycleSummary,
   IndexTarget,
+  ShardSpec,
+  ShardSpecResult,
 } from './cycle';
 export type { StreakAlert } from './alerts';
 import type { CycleSummary } from './cycle';
@@ -111,12 +120,27 @@ function buildTargets(config: IndexerConfig): IndexTarget[] {
 }
 
 /**
- * Build the targets, connect, and upsert protocol metadata (idempotent). Shared
- * by the standalone loop (main) and the single-cycle entry point (runIndexerCycle).
- * Throws on a bad DATABASE_URL / unreachable DB — callers decide how to report it.
+ * Build the targets, narrow them to this invocation's shard, connect, and upsert
+ * protocol metadata (idempotent). Shared by the standalone loop (main) and the
+ * single-cycle entry point (runIndexerCycle). Throws on a bad DATABASE_URL /
+ * unreachable DB — callers decide how to report it.
+ *
+ * THE SHARD IS APPLIED AFTER `orderByLatency`, and it has to be: `selectShard`
+ * preserves the order of the list it is given, so the subset this invocation
+ * runs is still slowest-first. It chooses its members from the ids alone, so the
+ * two compose in either order — see `selectShard`.
+ *
+ * The upsert loop covers this shard's protocols only. Every target belongs to
+ * exactly one shard, so the registry is still upserted in full across a full
+ * rotation; a protocol whose shard's cron job is broken stops being refreshed
+ * AND stops being scored, which is the same fact and is what `/api/v1/health`
+ * reports as staleness.
  */
-async function prepare(config: IndexerConfig): Promise<{ targets: IndexTarget[]; store: Store }> {
-  const targets = buildTargets(config);
+async function prepare(
+  config: IndexerConfig,
+  spec: ShardSpec,
+): Promise<{ targets: IndexTarget[]; store: Store }> {
+  const targets = selectShard(buildTargets(config), spec);
   const store = createStore(getPool());
   // Protocol metadata is static, so upsert once here; the run loop only appends
   // scores.
@@ -150,17 +174,21 @@ function cycleOptions(config: IndexerConfig): CycleOptions {
 }
 
 /**
- * Run exactly one scoring cycle and return a summary. This is the entry point the
- * dashboard's cron route (app/api/cron/run-indexer) calls: external scheduling
- * (a cron-job.org job, every 5 min) triggers the route, the route calls this, one
- * cycle writes to Postgres. Deliberately does NOT close the pool — under
- * serverless the pg Pool is reused across warm invocations; the Neon pooler owns
- * connection lifecycle. Config comes from validated env (loadConfig); a bad env
- * or unreachable DB throws (the route turns that into a 500).
+ * Run exactly one scoring cycle over one shard of the registry, and return a
+ * summary. This is the entry point the dashboard's cron route
+ * (app/api/cron/run-indexer) calls: external scheduling (cron-job.org jobs, one
+ * per shard, every 5 min) triggers the route, the route calls this, one cycle
+ * writes to Postgres. Deliberately does NOT close the pool — under serverless the
+ * pg Pool is reused across warm invocations; the Neon pooler owns connection
+ * lifecycle. Config comes from validated env (loadConfig); a bad env or
+ * unreachable DB throws (the route turns that into a 500).
+ *
+ * `spec` defaults to the whole registry, so a caller that says nothing gets
+ * exactly the cycle that ran before sharding existed.
  */
-export async function runIndexerCycle(): Promise<CycleSummary> {
+export async function runIndexerCycle(spec: ShardSpec = SINGLE_SHARD): Promise<CycleSummary> {
   const config = loadConfig();
-  const { targets, store } = await prepare(config);
+  const { targets, store } = await prepare(config, spec);
   return runCycle(targets, store, cycleOptions(config));
 }
 
@@ -182,9 +210,13 @@ async function main(): Promise<void> {
 
   // A failure here (bad DATABASE_URL, unreachable DB) should stop us before the
   // first cycle rather than silently drop every write.
+  // The standalone loop runs the WHOLE registry. Sharding exists to fit the
+  // serverless `maxDuration` ceiling, and a long-lived process has no such
+  // ceiling — splitting it here would buy nothing and cost a second thing to
+  // configure. `runIndexerCycle` is the entry point that takes a shard.
   let prepared: { targets: IndexTarget[]; store: Store };
   try {
-    prepared = await prepare(config);
+    prepared = await prepare(config, SINGLE_SHARD);
   } catch (err) {
     console.error(
       `Cannot reach the database — check DATABASE_URL and that migrations have run ` +

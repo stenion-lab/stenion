@@ -17,15 +17,20 @@ import { beforeEach, describe, it } from 'node:test';
 
 import {
   DEFAULT_CONCURRENCY,
+  SINGLE_SHARD,
   cycleFeasibility,
   cycleWaves,
   feasibilityWarning,
   orderByLatency,
+  resolveShardSpec,
   runCycle,
+  selectShard,
   targetDeadline,
+  targetHash,
   toTarget,
   type CycleOptions,
   type IndexTarget,
+  type ShardSpec,
 } from './cycle.ts';
 import type { StreakAlert } from './alerts.ts';
 import {
@@ -1038,9 +1043,25 @@ describe('orderByLatency — slowest first, because the pool overlaps the rest',
   it('puts the slowest measured target first and the fastest last', () => {
     // The order the indexer actually registers them in is BLEND_POOLS order
     // (blend, yieldblox) then kinetic. Deployed-function durations put Kinetic
-    // slowest and Blend Fixed fastest — see ARCHITECTURE.md.
+    // slowest and Blend Fixed fastest — see architecture/deploy-architecture.md.
     const ordered = orderByLatency(['blend', 'yieldblox', 'kinetic'].map((id) => okTarget(id)));
     assert.deepEqual(ids(ordered), ['kinetic', 'yieldblox', 'blend']);
+  });
+
+  it('orders the whole live registry by its deployed durations', () => {
+    // Pinned against the 2026-08-30 post-batching reading, so a change to
+    // SLOWEST_FIRST that contradicts the measurement fails here rather than in
+    // a comment nobody re-reads. aquarius-xlm-usdc is LAST — it is the fastest
+    // target in the registry, which is the opposite of what its request count
+    // predicted.
+    const registry = ['blend', 'yieldblox', 'etherfuse', 'kinetic', 'aquarius-xlm-usdc'];
+    assert.deepEqual(ids(orderByLatency(registry.map((id) => okTarget(id)))), [
+      'kinetic',
+      'yieldblox',
+      'etherfuse',
+      'blend',
+      'aquarius-xlm-usdc',
+    ]);
   });
 
   it('is the OPPOSITE of the order it replaced, and that is the point', () => {
@@ -1056,10 +1077,15 @@ describe('orderByLatency — slowest first, because the pool overlaps the rest',
   it('treats an unmeasured target as the slowest, so a new pool is not squeezed', () => {
     // A pool registered in BLEND_POOLS that nobody has timed yet must not land
     // in the worst slot by default. Assumed-slowest is the conservative reading.
+    //
+    // The stand-in used to be 'etherfuse', which stopped being unmeasured on
+    // 2026-08-30 when every registered target got a deployed durationMs. The
+    // rule under test is unchanged; only the example had to be one the registry
+    // genuinely does not know.
     const ordered = orderByLatency(
-      ['blend', 'etherfuse', 'kinetic', 'yieldblox'].map((id) => okTarget(id)),
+      ['blend', 'brand-new-pool', 'kinetic', 'yieldblox'].map((id) => okTarget(id)),
     );
-    assert.equal(ids(ordered)[0], 'etherfuse');
+    assert.equal(ids(ordered)[0], 'brand-new-pool');
   });
 
   it('keeps registration order between equally-ranked targets', () => {
@@ -1722,5 +1748,317 @@ describe('retries in one target do not touch another target', () => {
       budget.endsAt <= startedAt + 10_000 + 50,
       'the budget must expire with the attempt, not with the cycle',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sharding
+// ---------------------------------------------------------------------------
+
+/** The five targets registered today, in the order buildTargets assembles them. */
+const REGISTRY = ['blend', 'yieldblox', 'etherfuse', 'kinetic', 'aquarius-xlm-usdc'];
+
+const shardIds = (ids: string[], spec: ShardSpec): string[] =>
+  selectShard(
+    ids.map((id) => okTarget(id)),
+    spec,
+  ).map((t) => t.metadata.id);
+
+/** Every shard of a split, as arrays of ids. */
+function allShards(ids: string[], totalShards: number): string[][] {
+  return Array.from({ length: totalShards }, (_, shard) => shardIds(ids, { shard, totalShards }));
+}
+
+describe('selectShard — deterministic, balanced, exactly-once', () => {
+  it('is deterministic: the same list splits the same way every time', () => {
+    // The property the whole scheme rests on. Two cron jobs are separate
+    // processes on separate invocations and share no state, so if this were not
+    // a pure function of the ids they could both run a target, or neither.
+    for (const totalShards of [2, 3, 4]) {
+      assert.deepEqual(allShards(REGISTRY, totalShards), allShards(REGISTRY, totalShards));
+    }
+  });
+
+  it('does not depend on the order the targets arrive in', () => {
+    // orderByLatency runs before the split, and SLOWEST_FIRST changes whenever
+    // someone re-measures. If membership tracked input order, re-measuring a
+    // target would silently reshuffle the shards.
+    const reversed = [...REGISTRY].reverse();
+    for (const totalShards of [2, 3]) {
+      for (let shard = 0; shard < totalShards; shard++) {
+        const a = new Set(shardIds(REGISTRY, { shard, totalShards }));
+        const b = new Set(shardIds(reversed, { shard, totalShards }));
+        assert.deepEqual([...a].sort(), [...b].sort());
+      }
+    }
+  });
+
+  it('covers every target exactly once across a full rotation', () => {
+    // Not zero and not twice — the acceptance property. A target scored by two
+    // shards writes two rows per cycle and doubles its own history; one scored
+    // by none goes stale with nothing saying why.
+    for (const totalShards of [1, 2, 3, 4, 5, 6]) {
+      const seen = allShards(REGISTRY, totalShards).flat();
+      assert.equal(seen.length, REGISTRY.length, `totalShards=${totalShards} ran ${seen.length}`);
+      assert.deepEqual([...seen].sort(), [...REGISTRY].sort());
+    }
+  });
+
+  it('balances to within one target, which is what buys the capacity', () => {
+    // The reason a balanced deal was chosen over `hash % totalShards`. The
+    // registry ceiling is per shard, so N shards are worth N x the ceiling only
+    // if the split is even; the hash-mod alternative puts 4 of today's 5 slugs
+    // in one shard and would buy four slots instead of five.
+    for (const totalShards of [2, 3, 4]) {
+      const sizes = allShards(REGISTRY, totalShards).map((s) => s.length);
+      assert.ok(
+        Math.max(...sizes) - Math.min(...sizes) <= 1,
+        `totalShards=${totalShards} produced sizes ${sizes.join('/')}`,
+      );
+    }
+  });
+
+  it('grows in balance rather than in membership, and that is the tradeoff', () => {
+    // THE DECISION, PINNED. A balanced deal cannot also be stable under growth,
+    // and this asserts which half was chosen: adding a sixth target keeps every
+    // shard within one of the others, and MAY move an existing target. It is
+    // safe because nothing is keyed by shard — the suite below proves that
+    // rather than assuming it. If this ever needs to become "membership never
+    // moves", the fix is a different algorithm, not a relaxed assertion.
+    const grown = [...REGISTRY, 'aquarius-xlm-eurc'];
+    const sizes = allShards(grown, 2).map((s) => s.length);
+    assert.deepEqual(sizes, [3, 3]);
+    const seen = allShards(grown, 2).flat();
+    assert.deepEqual([...seen].sort(), [...grown].sort());
+  });
+
+  it('returns the whole registry at totalShards 1, untouched in order', () => {
+    // The default, and the old behaviour: the cron job that exists today passes
+    // no parameters and must keep scoring everything, in latency order.
+    assert.deepEqual(shardIds(REGISTRY, SINGLE_SHARD), REGISTRY);
+  });
+
+  it('preserves the input order inside a shard, so orderByLatency survives', () => {
+    // The split filters; it does not re-sort. A shard of a slowest-first list is
+    // still slowest-first, so the ordering heuristic keeps applying to the
+    // subset each invocation actually runs.
+    const ordered = orderByLatency(REGISTRY.map((id) => okTarget(id))).map((t) => t.metadata.id);
+    for (let shard = 0; shard < 3; shard++) {
+      const mine = shardIds(ordered, { shard, totalShards: 3 });
+      assert.deepEqual(
+        mine,
+        ordered.filter((id) => mine.includes(id)),
+      );
+    }
+  });
+
+  it('does not mutate the list it was given', () => {
+    const targets = REGISTRY.map((id) => okTarget(id));
+    selectShard(targets, { shard: 0, totalShards: 2 });
+    assert.deepEqual(
+      targets.map((t) => t.metadata.id),
+      REGISTRY,
+    );
+  });
+
+  it('hashes ids to a stable 32-bit value', () => {
+    // Pinned so a "harmless" rewrite of targetHash is caught here rather than by
+    // a shard rotation that quietly re-partitions the registry mid-deploy.
+    assert.equal(targetHash(''), 0x811c9dc5);
+    assert.equal(targetHash('blend'), targetHash('blend'));
+    assert.notEqual(targetHash('blend'), targetHash('kinetic'));
+    for (const id of REGISTRY) {
+      const h = targetHash(id);
+      assert.ok(Number.isInteger(h) && h >= 0 && h <= 0xffffffff, `${id} hashed to ${h}`);
+    }
+  });
+});
+
+describe('cycleFeasibility — checked against a shard, not the registry', () => {
+  it('is evaluated per shard, so a split registry is feasible where the whole is not', () => {
+    // The point of the change. Six targets at the shipped defaults need 60,000ms
+    // of attempts, which IS Vercel Hobby's maxDuration — infeasible in one
+    // invocation. Split across two shards, each invocation checks 3.
+    const shipped = { concurrency: 1, attemptTimeoutMs: 10_000, budgetMs: 50_000 };
+    assert.equal(cycleFeasibility({ targetCount: 6, ...shipped }).feasible, false);
+    for (const size of [3, 3]) {
+      assert.equal(cycleFeasibility({ targetCount: size, ...shipped }).feasible, true);
+    }
+  });
+
+  it('checks each shard against its own size, not the global count', () => {
+    // An uneven split (3 and 2) is two independent questions, and the smaller
+    // shard must not inherit the larger one's requirement.
+    const shipped = { concurrency: 1, attemptTimeoutMs: 10_000, budgetMs: 50_000 };
+    assert.equal(cycleFeasibility({ targetCount: 3, ...shipped }).requiredMs, 30_000);
+    assert.equal(cycleFeasibility({ targetCount: 2, ...shipped }).requiredMs, 20_000);
+  });
+
+  it('runCycle warns about the shard it was handed, not the registry behind it', async () => {
+    // runCycle only ever sees this shard's targets, so its feasibility warning
+    // is per-shard for free — but "for free" is exactly the kind of claim that
+    // stops being true silently, so it is asserted.
+    const { store } = fakeStore();
+    const shard = ['a', 'b'].map((id) => okTarget(id));
+    await runCycle(shard, store, {
+      retry: { attempts: 1, baseDelayMs: 0, attemptTimeoutMs: 10_000 },
+      budgetMs: 50_000,
+    });
+    assert.equal(
+      logs.some((l) => l.includes('[budget]')),
+      false,
+      'two targets inside a 50s budget must not warn',
+    );
+  });
+});
+
+describe('sharding cannot reset or double-count an alert streak', () => {
+  // THE DECISION THIS PROVES. checkStreak reads a protocol's own risk_scores
+  // rows and derives the streak from them (alerts.ts, "WHY DERIVE"). Nothing is
+  // keyed by the cycle or by the shard, so a target moved between shards keeps
+  // its history — and a target scored in a shard reaches the identical alert
+  // decision it would have reached unsharded. That is what makes the balanced
+  // deal's reshuffling safe, and it is asserted rather than reasoned about.
+
+  /** Run one target under a given shard spec against a seeded history. */
+  async function runUnder(spec: ShardSpec, history: Record<string, RecentRun[]>) {
+    const { store, written } = fakeStore({ history });
+    const { notifier, all } = fakeNotifier();
+    const registry = REGISTRY.map((id) => throwingTarget(id));
+    await runCycle(selectShard(registry, spec), store, alerting({ notifier }));
+    return { alerts: all(), written };
+  }
+
+  it('reaches the same alert decision sharded as unsharded', async () => {
+    // kinetic arrives with three consecutive failures; this cycle's own failure
+    // is the fourth and crosses STENION_ALERT_THRESHOLD. The alert must fire
+    // once, identically, whichever way the registry was split.
+    const history = { kinetic: failedRuns(3) };
+
+    const whole = await runUnder(SINGLE_SHARD, history);
+    const kineticAlert = whole.alerts.find((a) => a.protocolId === 'kinetic');
+    assert.ok(kineticAlert, 'unsharded: kinetic crosses the threshold');
+    assert.equal(kineticAlert.kind, 'failing');
+    assert.equal(kineticAlert.consecutiveFailures, 4);
+
+    // Find the shard kinetic actually lands in, for every split, and run it.
+    //
+    // Compared field by field except `lastFailureAt`, which is THIS cycle's own
+    // runAt and so differs by a millisecond between any two runs, sharded or
+    // not. It is a clock reading, not part of the decision; everything that
+    // decides whether and what to alert is asserted identical.
+    const decision = ({ lastFailureAt: _ignored, ...rest }: StreakAlert) => rest;
+    for (const totalShards of [2, 3]) {
+      const shard = allShards(REGISTRY, totalShards).findIndex((s) => s.includes('kinetic'));
+      const sharded = await runUnder({ shard, totalShards }, history);
+      const same = sharded.alerts.find((a) => a.protocolId === 'kinetic');
+      assert.ok(same, `totalShards=${totalShards}: kinetic still alerts`);
+      assert.deepEqual(
+        decision(same),
+        decision(kineticAlert),
+        `totalShards=${totalShards}: identical alert decision`,
+      );
+    }
+  });
+
+  it('writes exactly one run record per target per rotation', () => {
+    // Double-counting is the other half of the risk: a target in two shards
+    // would append two failed rows per cycle and cross the threshold in half
+    // the time. Exactly-once membership is what forbids it.
+    for (const totalShards of [2, 3]) {
+      const dealt = allShards(REGISTRY, totalShards).flat();
+      const counts = new Map<string, number>();
+      for (const id of dealt) counts.set(id, (counts.get(id) ?? 0) + 1);
+      for (const id of REGISTRY) {
+        assert.equal(counts.get(id), 1, `${id} appears ${counts.get(id)} times`);
+      }
+    }
+  });
+
+  it('a shard that alerts posts its own batch, covering only its own targets', async () => {
+    // THE ACCEPTED COST, pinned so it is a decision rather than a surprise. One
+    // POST per cycle becomes one POST per shard invocation: an RPC-wide outage
+    // that takes out the whole registry now reads as N messages rather than 1,
+    // each covering a disjoint set. Within a shard the batching is unchanged.
+    const history = Object.fromEntries(REGISTRY.map((id) => [id, failedRuns(3)]));
+    const totalShards = 2;
+    const seen: string[] = [];
+    for (let shard = 0; shard < totalShards; shard++) {
+      const { store } = fakeStore({ history });
+      const { notifier, batches } = fakeNotifier();
+      const registry = REGISTRY.map((id) => throwingTarget(id));
+      const mine = selectShard(registry, { shard, totalShards });
+      await runCycle(mine, store, alerting({ notifier }));
+
+      assert.equal(batches.length, 1, 'one POST per shard invocation, not one per target');
+      const alerted = batches[0].map((a) => a.protocolId).sort();
+      assert.deepEqual(
+        alerted,
+        mine.map((t) => t.metadata.id).sort(),
+        'a shard alerts about its own targets and no others',
+      );
+      seen.push(...alerted);
+    }
+    // Across the rotation every protocol is still alerted about exactly once.
+    assert.deepEqual(seen.sort(), [...REGISTRY].sort());
+  });
+
+  it('a fresh history still never alerts, sharded', async () => {
+    // The empty-table rule (alerts.ts) must survive the split: a protocol whose
+    // shard has just started running has no history, and 0 leading failures is
+    // not a streak.
+    const { alerts } = await runUnder({ shard: 0, totalShards: 2 }, {});
+    assert.deepEqual(alerts, []);
+  });
+});
+
+describe('resolveShardSpec — refuses anything that breaks coverage', () => {
+  const ok = (r: ReturnType<typeof resolveShardSpec>) => {
+    assert.equal(r.ok, true, r.ok ? '' : r.error);
+    return r.ok ? r.spec : SINGLE_SHARD;
+  };
+  const err = (r: ReturnType<typeof resolveShardSpec>) => {
+    assert.equal(r.ok, false, 'expected a refusal');
+    return r.ok ? '' : r.error;
+  };
+
+  it('defaults to the whole registry when neither parameter is given', () => {
+    // Backwards compatibility, and it is load-bearing: the cron-job.org job that
+    // exists today sends no query string and must keep scoring everything.
+    assert.deepEqual(ok(resolveShardSpec(null, null)), SINGLE_SHARD);
+    assert.deepEqual(ok(resolveShardSpec('', '  ')), SINGLE_SHARD);
+    assert.deepEqual(ok(resolveShardSpec(undefined, undefined)), SINGLE_SHARD);
+  });
+
+  it('accepts a well-formed spec', () => {
+    assert.deepEqual(ok(resolveShardSpec('0', '3')), { shard: 0, totalShards: 3 });
+    assert.deepEqual(ok(resolveShardSpec('2', '3')), { shard: 2, totalShards: 3 });
+  });
+
+  it('refuses one parameter without the other', () => {
+    // A half-configured job. Guessing the missing half means scoring a subset
+    // nobody asked for, which is worse than a 400 the operator can see.
+    assert.match(err(resolveShardSpec('1', null)), /together/);
+    assert.match(err(resolveShardSpec(null, '2')), /together/);
+  });
+
+  it('refuses a shard that is not less than totalShards', () => {
+    // The spec that silently scores nothing, forever, while a slice of the
+    // registry goes stale with a cheerful 200 on every invocation.
+    assert.match(err(resolveShardSpec('2', '2')), /less than/);
+    assert.match(err(resolveShardSpec('9', '3')), /less than/);
+  });
+
+  it('refuses totalShards below 1', () => {
+    assert.match(err(resolveShardSpec('0', '0')), /at least 1/);
+  });
+
+  it('refuses anything that is not a plain integer', () => {
+    // Number() would take all of these. A cron job's URL carries an integer or
+    // is told it does not.
+    for (const bad of ['1e0', '0x1', '1.5', '-1', 'two', ' ']) {
+      assert.equal(resolveShardSpec(bad, '4').ok, false, `accepted shard="${bad}"`);
+      assert.equal(resolveShardSpec('0', bad).ok, false, `accepted totalShards="${bad}"`);
+    }
   });
 });

@@ -297,27 +297,43 @@ export function cycleWaves(queued: number, concurrency: number): number {
  * nothing can overlap with. Keeping the old order after removing the rule that
  * justified it would have been the quiet regression.
  *
- * Durations are the deployed-function measurements in ARCHITECTURE.md
- * (2026-08-25, five cycles): Kinetic 4.8-6.1s, YieldBlox 3.8-4.3s, Blend Fixed
- * 2.3-2.6s. Kinetic and YieldBlox swapped places when the measurement moved off
- * a developer machine and onto Vercel, which is the whole argument for measuring
- * there. At the three targets and concurrency 2 of that measurement the swap
- * changed nothing — those two shared wave 1 either way, and what matters is that
- * the fastest target is last — but a list whose comment cites numbers that no
- * longer hold is a list nobody can check, so it tracks the measurement.
+ * Durations are deployed-function measurements, never local ones. The current
+ * list is the 2026-08-30 reading (three cycles `curl`ed from the cron route,
+ * concurrency 1, all five targets), taken AFTER the ledger-entry batching
+ * landed:
  *
- * DELIBERATELY NOT UPDATED FOR ETHERFUSE. It has no deployed measurement,
- * so it is not on this list and `orderByLatency` therefore treats it as the
- * slowest and runs it first — the conservative default this list is built to
- * allow. Add it here only once the cron route's per-target `durationMs` says
- * where it belongs; guessing its rank from a local timing is the exact mistake
- * the concurrency incident was.
+ *   kinetic 5.2-5.5s · yieldblox 2.9-3.2s · etherfuse 2.2-2.6s ·
+ *   blend 1.9-2.2s · aquarius-xlm-usdc 1.5-1.6s
+ *
+ * EVERY REGISTERED TARGET IS NOW MEASURED, which is new: etherfuse and
+ * aquarius-xlm-usdc were both absent from this list, and `orderByLatency`
+ * therefore ran them first as assumed-slowest. That default did its job and is
+ * kept for the next unmeasured pool, but holding it for a target we now have
+ * numbers for would state the opposite of what was measured — aquarius-xlm-usdc
+ * is the FASTEST target in the registry, at roughly a quarter of the 5.5-8.7s
+ * its request count was estimated to cost, because batching collapsed its
+ * ledger reads and `depthSafety` was deferred so it never simulates a swap.
+ *
+ * The estimate being off by ~4x is the same lesson as the concurrency incident,
+ * pointing the other way: a request count is machine-independent and a duration
+ * is not, so neither one is a substitute for the deployed reading.
+ *
+ * At concurrency 1 this ordering cannot change a cycle's makespan — the sum is
+ * the sum. It is kept correct because it decides the makespan the moment
+ * concurrency rises, and because a list whose comment cites numbers that no
+ * longer hold is a list nobody can check.
  *
  * It lives here rather than beside `buildTargets` for one blunt reason: index.ts
  * is a CommonJS CLI entry point and cannot be imported by a test, so an ordering
  * decision made there is an ordering decision nothing can check.
  */
-const SLOWEST_FIRST: readonly string[] = ['kinetic', 'yieldblox', 'blend'];
+const SLOWEST_FIRST: readonly string[] = [
+  'kinetic',
+  'yieldblox',
+  'etherfuse',
+  'blend',
+  'aquarius-xlm-usdc',
+];
 
 /**
  * Order targets slowest-first. Pure, and total on ids it has never heard of.
@@ -337,6 +353,172 @@ export function orderByLatency(targets: IndexTarget[]): IndexTarget[] {
   // Array.prototype.sort is stable, so equally-ranked targets keep registration
   // order — two unmeasured pools stay in BLEND_POOLS order.
   return [...targets].sort((a, b) => rank(a.metadata.id) - rank(b.metadata.id));
+}
+
+// ---------------------------------------------------------------------------
+// Sharding — which slice of the registry one invocation scores
+// ---------------------------------------------------------------------------
+
+/**
+ * Which slice of the registry a single invocation is responsible for.
+ *
+ * `{ shard: 0, totalShards: 1 }` is "all of it", and is what every caller that
+ * says nothing gets — so the unsharded cron job that exists today keeps working
+ * with no change to it at all.
+ */
+export interface ShardSpec {
+  /** 0-based index of this shard. Always `< totalShards`. */
+  shard: number;
+  /** How many shards the registry is split across. 1 disables sharding. */
+  totalShards: number;
+}
+
+/** The whole registry in one invocation — the default, and the old behaviour. */
+export const SINGLE_SHARD: ShardSpec = { shard: 0, totalShards: 1 };
+
+/**
+ * FNV-1a, 32-bit, over a target id.
+ *
+ * A hash rather than a position because the deal order below must not depend on
+ * the order targets happen to be registered or sorted in — see `selectShard`.
+ * FNV-1a specifically because it is four lines, has no dependency, and is
+ * identical in every runtime: the split has to come out the same in a test, in
+ * `next dev`, and in a minified serverless bundle, and anything reaching for a
+ * runtime identifier or a platform hash would not.
+ *
+ * `Math.imul` and `>>> 0` keep this in 32-bit unsigned arithmetic; without them
+ * the multiply overflows into a float and the result stops being a hash.
+ *
+ * NOT a security primitive and never used as one. The only property required is
+ * that it is a fixed, well-mixed function of the string.
+ */
+export function targetHash(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/**
+ * Split the registry and return the targets belonging to `spec.shard`.
+ *
+ * THE RULE: sort every target by `(targetHash(id), id)` — a total order that is
+ * a function of the ids alone — then deal that order round-robin across the
+ * shards. Position `i` in the deal goes to shard `i % totalShards`.
+ *
+ * BALANCED BY CONSTRUCTION, WHICH IS THE POINT. Shard sizes differ by at most
+ * one, always, so N shards buy exactly N times the registry ceiling. The
+ * obvious alternative — `targetHash(id) % totalShards` — is what makes a
+ * target's shard depend on nothing but itself, and it was measured against this
+ * registry before being rejected: today's five slugs hash to **4 and 1** across
+ * two shards, so the second invocation would buy four slots instead of five,
+ * and at ten targets a two-way split is more likely than not to put six in one
+ * shard and be infeasible outright. Sharding exists to buy capacity; an
+ * assignment that throws a third of it away does not do the job.
+ *
+ * WHAT THAT COSTS, STATED PLAINLY: registering a sixth target can move an
+ * existing target to a different shard. That is safe HERE, and the reason is
+ * worth being explicit about rather than assumed — **nothing in this system is
+ * keyed by shard.** A run record is keyed by protocol; a streak is derived by
+ * `decideAlert` from that protocol's own `risk_scores` rows (see alerts.ts,
+ * "WHY DERIVE"); staleness is per protocol. A target that changes shard is
+ * scored a few minutes earlier or later within the same cadence and nothing
+ * else observes the move. The membership tests in cycle.test.ts pin exactly
+ * that: one target produces the same run record and the same alert decision
+ * from either shard, and from no shard at all. If some future state ever IS
+ * keyed by shard, this is the decision to revisit — not the test to relax.
+ *
+ * INDEPENDENT OF THE INPUT ORDER, deliberately. The deal is sorted by hash, so
+ * `selectShard(orderByLatency(t), s)` and `orderByLatency(selectShard(t, s))`
+ * choose the same members. Ordering and sharding are orthogonal, and neither
+ * has to know the other ran. The RESULT preserves the input order, so a
+ * latency-ordered list stays latency-ordered after the split.
+ *
+ * EXACTLY-ONCE COVERAGE is the load-bearing property: every target lands in
+ * exactly one shard, so running shards `0..totalShards-1` scores the registry
+ * once and once only. `resolveShardSpec` is what refuses a spec that would
+ * break it.
+ */
+export function selectShard(targets: IndexTarget[], spec: ShardSpec): IndexTarget[] {
+  const { shard, totalShards } = spec;
+  if (totalShards <= 1) return [...targets];
+
+  // Sorted by hash, with the id as the tie-break so two ids that collide still
+  // have one fixed order rather than whichever the input happened to carry.
+  const deal = [...targets].sort((a, b) => {
+    const ha = targetHash(a.metadata.id);
+    const hb = targetHash(b.metadata.id);
+    return ha === hb ? a.metadata.id.localeCompare(b.metadata.id) : ha - hb;
+  });
+
+  const mine = new Set<string>();
+  deal.forEach((target, i) => {
+    if (i % totalShards === shard) mine.add(target.metadata.id);
+  });
+
+  // Filtered from the ORIGINAL list, not from `deal`, so whatever order the
+  // caller established survives the split.
+  return targets.filter((t) => mine.has(t.metadata.id));
+}
+
+/** A validated spec, or the reason it was refused. */
+export type ShardSpecResult = { ok: true; spec: ShardSpec } | { ok: false; error: string };
+
+/**
+ * Turn two optional raw parameters into a spec, refusing anything that would
+ * break exactly-once coverage.
+ *
+ * It takes strings because the only caller that passes anything is the cron
+ * route's query string, and it lives here rather than there for the same blunt
+ * reason `orderByLatency` does: a route handler is not a thing this repo can
+ * load from a test, so a coverage rule enforced in one is a coverage rule
+ * nothing checks. The rule, not the transport, is the load-bearing part.
+ *
+ * BOTH OR NEITHER. `?shard=1` with no `totalShards` is not "shard 1 of the
+ * default" — it is a half-configured cron job, and the honest response to it is
+ * a 400 rather than a cycle that silently scores the wrong subset. The
+ * both-absent case is the unsharded default, which is what keeps the existing
+ * job working untouched.
+ */
+export function resolveShardSpec(
+  rawShard: string | null | undefined,
+  rawTotalShards: string | null | undefined,
+): ShardSpecResult {
+  const shardText = rawShard?.trim() ?? '';
+  const totalText = rawTotalShards?.trim() ?? '';
+
+  if (shardText === '' && totalText === '') return { ok: true, spec: SINGLE_SHARD };
+  if (shardText === '' || totalText === '') {
+    return { ok: false, error: 'shard and totalShards must be given together, or both omitted' };
+  }
+
+  // A plain-integer test rather than Number(), which would accept '1e0', '0x1'
+  // and ' 1 ' — a cron job's URL should carry an integer or be told it doesn't.
+  const isInt = (t: string): boolean => /^[0-9]+$/.test(t);
+  if (!isInt(shardText) || !isInt(totalText)) {
+    return {
+      ok: false,
+      error: `shard and totalShards must be non-negative integers, got "${shardText}" and "${totalText}"`,
+    };
+  }
+
+  const shard = Number(shardText);
+  const totalShards = Number(totalText);
+  if (totalShards < 1) {
+    return { ok: false, error: `totalShards must be at least 1, got ${totalShards}` };
+  }
+  if (shard >= totalShards) {
+    // The spec that silently scores nothing. Refused loudly, because a job
+    // configured `shard=2&totalShards=2` would otherwise return a cheerful
+    // `ran: 0` forever while a third of the registry quietly went stale.
+    return {
+      ok: false,
+      error: `shard must be less than totalShards, got shard=${shard} of ${totalShards}`,
+    };
+  }
+  return { ok: true, spec: { shard, totalShards } };
 }
 
 /**
