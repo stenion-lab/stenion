@@ -89,6 +89,16 @@ export type RegistryCategoryFilter = 'all' | ProtocolCategory;
 
 export const DEFAULT_CATEGORY: RegistryCategoryFilter = 'all';
 
+export const REGISTRY_EXPORT_FORMATS = ['csv', 'json'] as const;
+export type RegistryExportFormat = (typeof REGISTRY_EXPORT_FORMATS)[number];
+
+export interface RegistryExportLink {
+  format: RegistryExportFormat;
+  label: string;
+  href: string;
+  ariaLabel: string;
+}
+
 /**
  * How a category is written where a reader sees it — a section heading above a
  * ranked block, or an option in the filter.
@@ -180,6 +190,27 @@ export function registryHref(params: Partial<RegistryParams>): string {
   if (params.sort && params.sort !== DEFAULT_SORT) search.set('sort', params.sort);
   const qs = search.toString();
   return qs ? `/registry?${qs}` : '/registry';
+}
+
+export function registryExportHref(format: RegistryExportFormat): string {
+  return `/api/v1/protocols/export?format=${format}`;
+}
+
+export function registryExportLinks(): RegistryExportLink[] {
+  return [
+    {
+      format: 'csv',
+      label: 'CSV',
+      href: registryExportHref('csv'),
+      ariaLabel: 'Download current registry snapshot as CSV',
+    },
+    {
+      format: 'json',
+      label: 'JSON',
+      href: registryExportHref('json'),
+      ariaLabel: 'Download current registry snapshot as JSON',
+    },
+  ];
 }
 
 /**
