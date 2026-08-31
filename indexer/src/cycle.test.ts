@@ -82,6 +82,9 @@ function fakeStore(
     async listProtocolsWithLatestScore() {
       return [];
     },
+    async listCurrentScoredRegistryState() {
+      return [];
+    },
     async getProtocolDetail() {
       return null;
     },

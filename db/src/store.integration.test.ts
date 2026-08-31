@@ -57,15 +57,41 @@ describe('Store SQL (integration)', { skip }, () => {
       error?: string;
       runAt: string;
       version?: number;
+      category?: string;
+      factors?: Record<string, unknown>;
+      operationalState?: Record<string, unknown> | null;
     },
   ) {
     await pool.query(
       `INSERT INTO risk_scores
-         (protocol_id, status, safety_score, factors, error, computed_at, run_at, methodology_version)
-       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8)`,
+         (protocol_id, status, safety_score, factors, error, computed_at, run_at, methodology_version,
+          operational_state, category)
+       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9::jsonb,$10)`,
       row.status === 'ok'
-        ? [protocolId, 'ok', row.score, '{}', null, row.runAt, row.runAt, row.version ?? 1]
-        : [protocolId, 'failed', null, null, row.error ?? 'boom', null, row.runAt, null],
+        ? [
+            protocolId,
+            'ok',
+            row.score,
+            JSON.stringify(row.factors ?? {}),
+            null,
+            row.runAt,
+            row.runAt,
+            row.version ?? 1,
+            row.operationalState == null ? null : JSON.stringify(row.operationalState),
+            row.category ?? 'lending',
+          ]
+        : [
+            protocolId,
+            'failed',
+            null,
+            null,
+            row.error ?? 'boom',
+            null,
+            row.runAt,
+            null,
+            null,
+            null,
+          ],
     );
   }
 
@@ -252,6 +278,121 @@ describe('Store SQL (integration)', { skip }, () => {
       [high, low, none],
     );
     assert.equal(board[2].safetyScore, null, 'the unscored one sorts last, with a null score');
+  });
+
+  it('exports only current scored rows with latest-ok factors and latest-run status', async () => {
+    // Same staleness semantics as listProtocolsWithLatestScore, but as a scored
+    // snapshot: the never-scored protocol is excluded rather than exported with
+    // null score fields.
+    const stale = id('export-stale');
+    const newerOk = id('export-newer-ok');
+    const neverScored = id('export-never-scored');
+
+    for (const [p, name, category] of [
+      [stale, 'Export Stale', 'lending'],
+      [newerOk, 'Export DEX', 'dex'],
+      [neverScored, 'Export Never', 'lending'],
+    ] as const) {
+      await store.upsertProtocol({
+        id: p,
+        name,
+        chain: 'stellar',
+        category,
+        adapterRef: 'FakeAdapter',
+        logo: p === stale ? '/assets/protocols/blend.svg' : undefined,
+        deployedOn:
+          p === stale
+            ? {
+                host: 'Blend',
+                label: 'Blend V2 pool',
+              }
+            : undefined,
+      });
+    }
+
+    await insertRun(stale, {
+      status: 'ok',
+      score: 44,
+      runAt: '2026-08-16T10:00:00Z',
+      factors: {
+        collateralSafety: { value: 44, weight: 0.2, detail: 'older row' },
+      },
+      operationalState: {
+        level: OperationalLevel.EntryDisabled,
+        source: 'PoolConfig.status = 4',
+        blocked: ['supply', 'borrow'],
+        origin: 'admin',
+        detail: 'pool status 4 (Admin Frozen)',
+        asOf: '2026-08-16T10:00:00.000Z',
+      },
+    });
+    await insertRun(stale, {
+      status: 'failed',
+      error: 'RPC down',
+      runAt: '2026-08-16T10:05:00Z',
+    });
+    await insertRun(newerOk, {
+      status: 'ok',
+      score: 21,
+      runAt: '2026-08-16T10:00:00Z',
+      category: 'dex',
+      factors: {
+        adminKeySafety: { value: 21, weight: 0.55, detail: 'old dex factor' },
+      },
+    });
+    await insertRun(newerOk, {
+      status: 'ok',
+      score: 24,
+      runAt: '2026-08-16T10:10:00Z',
+      category: 'dex',
+      version: 2,
+      factors: {
+        adminKeySafety: { value: 24, weight: 0.55, detail: 'new dex factor' },
+        assetControlSafety: { value: 28, weight: 0.45, detail: 'reserve issuer controls' },
+      },
+      operationalState: {
+        level: OperationalLevel.Active,
+        source: 'router.get_emergency_mode() = false',
+        blocked: [],
+        origin: 'indeterminate',
+        detail: 'the AMM router is not in emergency mode',
+        asOf: '2026-08-16T10:10:00.000Z',
+      },
+    });
+    await insertRun(neverScored, {
+      status: 'failed',
+      error: 'never produced a score',
+      runAt: '2026-08-16T10:10:00Z',
+    });
+
+    const ids = new Set([stale, newerOk, neverScored]);
+    const exported = (await store.listCurrentScoredRegistryState()).filter((row) =>
+      ids.has(row.id),
+    );
+    assert.deepEqual(
+      exported.map((row) => row.id),
+      [stale, newerOk],
+      'one current scored row per protocol, sorted by latest ok score',
+    );
+
+    const staleRow = exported.find((row) => row.id === stale);
+    assert.ok(staleRow);
+    assert.equal(staleRow.safetyScore, 44);
+    assert.equal(staleRow.lastRunStatus, 'failed');
+    assert.equal(staleRow.lastRunAt, '2026-08-16T10:05:00.000Z');
+    assert.deepEqual(staleRow.deployedOn, { host: 'Blend', label: 'Blend V2 pool' });
+    assert.deepEqual(staleRow.factors, {
+      collateralSafety: { value: 44, weight: 0.2, detail: 'older row' },
+    });
+    assert.equal(staleRow.operationalState?.level, OperationalLevel.EntryDisabled);
+
+    const dexRow = exported.find((row) => row.id === newerOk);
+    assert.ok(dexRow);
+    assert.equal(dexRow.category, 'dex');
+    assert.equal(dexRow.safetyScore, 24);
+    assert.equal(dexRow.methodologyVersion, 2);
+    assert.deepEqual(Object.keys(dexRow.factors).sort(), ['adminKeySafety', 'assetControlSafety']);
+    assert.ok(!exported.some((row) => row.id === neverScored));
   });
 
   it('enforces the ok/failed split at the database level', async () => {
