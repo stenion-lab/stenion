@@ -26,14 +26,15 @@ hide it. The current version is `1`.
 
 ## Caching
 
-All three `/v1` read routes are served through a CDN. The two scored routes — `/v1/protocols` and
-`/v1/protocol/:id` — use a TTL computed per response from the data in the body rather than a fixed
-constant. The reason is directly relevant to you: a fixed TTL would serve a body claiming "the last
-run succeeded at T" for some seconds after a later run had already failed — the cache would be lying
-in exactly the field that exists to stop us lying about freshness.
+All cacheable `/v1` read routes are served through a CDN. The scored current-state routes —
+`/v1/protocols`, `/v1/protocols/export`, and `/v1/protocol/:id` — use a TTL computed per response
+from the data in the body rather than a fixed constant. The reason is directly relevant to you: a
+fixed TTL would serve a body claiming "the last run succeeded at T" for some seconds after a later
+run had already failed — the cache would be lying in exactly the field that exists to stop us lying
+about freshness.
 
-**The guarantee, on those two routes: a cached response can hide a newer indexer run by at most 10
-seconds.**
+**The guarantee, on those three routes: a cached response can hide a newer indexer run by at most
+10 seconds.**
 
 `GET /api/v1/coverage` is the deliberate exception, and says so rather than quietly differing. Its
 body carries no `lastRunAt` — there is no run behind a coverage decision — and its records change

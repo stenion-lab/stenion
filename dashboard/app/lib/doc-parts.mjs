@@ -35,6 +35,7 @@ export const ARCHITECTURE_PARTS = [
 export const API_PARTS = [
   'api-docs/index.md',
   'api-docs/protocols.md',
+  'api-docs/export.md',
   'api-docs/coverage.md',
   'api-docs/protocol-by-id.md',
   'api-docs/health.md',

@@ -254,10 +254,9 @@ SDK's CJS build, which requires ESM-only `@noble/hashes`, so the cron route thro
 `ERR_REQUIRE_ESM` at import time on any runtime without `require(esm)` and the indexer stops
 silently (`lastRunStatus` stays `ok`, `staleMinutes` climbs). It must stay **bundled**; full
 incident and the verification recipe are in `architecture/`. The API lives as Next.js Route Handlers
-(`/api/v1/protocols`, `/api/v1/coverage`, `/api/v1/protocol/[id]`, `/api/v1/health` — versioned;
-there are **no**
-unversioned paths, the
-former transitional aliases were removed and now 404, and the versioning policy lives in
+(`/api/v1/protocols`, `/api/v1/protocols/export`, `/api/v1/coverage`,
+`/api/v1/protocol/[id]`, `/api/v1/health` — versioned; there are **no**
+unversioned paths, the former transitional aliases were removed and now 404, and the versioning policy lives in
 `architecture/`); the dashboard's own pages read `@stenion/db`'s `Store`
 in-process (no HTTP hop). The indexer is triggered by a secret-gated cron route
 (`POST /api/cron/run-indexer`), which an external cron-job.org job POSTs to every 5 minutes with
@@ -274,7 +273,7 @@ kept but not deployed. Env vars: `DATABASE_URL` (Neon pooled), `STENION_RPC_URL`
 alerts; unset = off), `STENION_RATE_LIMIT_SALT`, and the retry/threshold, rate-limit and
 health-threshold knobs, which all have defaults. Every variable the repo understands is documented in `.env.example`.
 
-All four `/v1` read routes are rate limited. Three are CDN-cached; `/v1/health` deliberately is
+All five `/v1` read routes are rate limited. Four are CDN-cached; `/v1/health` deliberately is
 **not** (`no-store`) — staleness there advances with the wall clock, so any TTL can serve a
 `healthy` 200 after the true answer became `degraded`. The cron route is **neither**, and must
 stay that way — rate limiting an authenticated internal trigger can only block a scheduled run.
