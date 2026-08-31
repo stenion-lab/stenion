@@ -2,7 +2,7 @@
 
 **Free, public, read-only risk data for Stellar/Soroban DeFi lending protocols.**
 
-Four `GET` endpoints, no authentication, no API key, CORS open to any origin. If you are building a
+Five `GET` endpoints, no authentication, no API key, CORS open to any origin. If you are building a
 wallet, an aggregator, or a dashboard and you want a live safety number for a protocol your users
 are about to interact with, this is the whole surface area.
 
@@ -31,6 +31,9 @@ The `/v1/health` examples are mixed, and marked individually at the endpoint. Th
 `curl`ed from production on **2026-08-25T18:20Z**. The `degraded` body is **constructed, not
 captured**: `risk_scores` has never held a failed run, so that state has never occurred in production
 and cannot be observed until it does.
+
+The `/v1/protocols/export` contract is documented without a body example until a deployed response
+can be captured live.
 
 ---
 
@@ -95,6 +98,10 @@ integrating this API does not create one either.
 ```bash
 # every protocol, ranked
 curl https://stenion.vercel.app/api/v1/protocols
+
+# current scored registry snapshot, as JSON or CSV
+curl -OJ "https://stenion.vercel.app/api/v1/protocols/export?format=json"
+curl -OJ "https://stenion.vercel.app/api/v1/protocols/export?format=csv"
 
 # protocols Stenion assessed and deliberately does not score
 curl https://stenion.vercel.app/api/v1/coverage

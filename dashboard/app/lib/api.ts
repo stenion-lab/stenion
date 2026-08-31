@@ -3,8 +3,8 @@
 // ARCHITECTURE NOTE — deploy merge (2026-08-12). The public API used to be a
 // separate @stenion/api service that this module fetched over HTTP (STENION_API_URL).
 // For the Vercel deploy the API is merged INTO this Next.js app as Route Handlers
-// (app/api/v1/protocols, app/api/v1/coverage, app/api/v1/protocol/[id], app/api/v1/health) so
-// there is one deployable, not two.
+// (app/api/v1/protocols, app/api/v1/protocols/export, app/api/v1/coverage,
+// app/api/v1/protocol/[id], app/api/v1/health) so there is one deployable, not two.
 //
 // Because the dashboard renders on the server, its pages now read the same
 // @stenion/db Store DIRECTLY here — no HTTP hop, no self-fetch. Self-fetching our

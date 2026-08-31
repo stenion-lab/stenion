@@ -4,6 +4,7 @@ export {
   createStore,
   DETAIL_HISTORY_LIMIT,
   type Store,
+  type CurrentRegistryExportEntry,
   type RunRecord,
   type LeaderboardEntry,
   type HistoryEntry,

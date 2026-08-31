@@ -20,10 +20,12 @@ import { describe, it } from 'node:test';
 
 import {
   toDeployedOn,
+  toCurrentRegistryExportEntry,
   toHistoryEntry,
   toLeaderboardEntry,
   toProtocolDetail,
   toRunHealthEntry,
+  type CurrentRegistryExportRow,
   type HistoryRow,
   type LeaderboardRow,
   type ProtocolDetailRow,
@@ -386,6 +388,76 @@ describe('toLeaderboardEntry', () => {
     const entry = toLeaderboardEntry(row({ last_run_status: 'failed' }));
     assert.equal(entry.safetyScore, 53);
     assert.equal(entry.lastRunStatus, 'failed');
+  });
+});
+
+describe('toCurrentRegistryExportEntry', () => {
+  const row = (over: Partial<CurrentRegistryExportRow> = {}): CurrentRegistryExportRow => ({
+    id: 'blend',
+    name: 'Blend',
+    chain: 'stellar',
+    category: 'lending',
+    logo: '/assets/protocols/blend.svg',
+    deployment_host: null,
+    deployment_label: null,
+    safety_score: '53',
+    computed_at: COMPUTED_AT,
+    methodology_version: 1,
+    factors: FACTORS,
+    operational_state: OPERATIONAL_STATE,
+    last_run_at: RUN_AT,
+    last_run_status: 'ok',
+    ...over,
+  });
+
+  it('maps a currently scored row with factors and methodologyVersion', () => {
+    const entry = toCurrentRegistryExportEntry(row());
+    assert.deepEqual(entry, {
+      id: 'blend',
+      name: 'Blend',
+      chain: 'stellar',
+      category: 'lending',
+      logo: '/assets/protocols/blend.svg',
+      deployedOn: null,
+      safetyScore: 53,
+      computedAt: '2026-08-16T11:25:01.000Z',
+      methodologyVersion: 1,
+      factors: FACTORS,
+      operationalState: OPERATIONAL_STATE,
+      lastRunAt: '2026-08-16T11:25:02.000Z',
+      lastRunStatus: 'ok',
+    });
+  });
+
+  it('keeps a stale latest-run status without disturbing the latest successful score', () => {
+    const failedAt = new Date('2026-08-16T11:30:02.000Z');
+    const entry = toCurrentRegistryExportEntry(
+      row({ last_run_at: failedAt, last_run_status: 'failed' }),
+    );
+    assert.equal(entry.safetyScore, 53);
+    assert.equal(entry.computedAt, COMPUTED_AT.toISOString());
+    assert.equal(entry.lastRunStatus, 'failed');
+    assert.equal(entry.lastRunAt, failedAt.toISOString());
+  });
+
+  it('preserves category-specific factor maps exactly', () => {
+    const dexFactors = {
+      adminKeySafety: { value: 10, weight: 0.55, detail: 'role posture' },
+      assetControlSafety: { value: 40, weight: 0.45, detail: 'issuer controls' },
+    };
+    const entry = toCurrentRegistryExportEntry(
+      row({ category: 'dex', factors: dexFactors, safety_score: '24' }),
+    );
+    assert.equal(entry.category, 'dex');
+    assert.deepEqual(entry.factors, dexFactors);
+    assert.deepEqual(Object.keys(entry.factors).sort(), ['adminKeySafety', 'assetControlSafety']);
+  });
+
+  it('passes a null operationalState through as not-read, not active', () => {
+    assert.equal(
+      toCurrentRegistryExportEntry(row({ operational_state: null })).operationalState,
+      null,
+    );
   });
 });
 

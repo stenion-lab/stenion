@@ -4,13 +4,14 @@
 separate services. Everything runs from the single Next.js app:
 
 - **API** → Next.js Route Handlers inside the dashboard (`app/api/v1/protocols`,
-  `app/api/v1/coverage`, `app/api/v1/protocol/[id]`, `app/api/v1/health`). The scored routes use the
-  same `Store` methods and JSON as the original standalone API — a transport change, not a rewrite.
-  The coverage route combines the static coverage module with live leaderboard ids solely for
-  deduplication. The health route reports indexer freshness and nothing else — see "The health
-  endpoint" below. CORS (`access-control-allow-origin: *`) is set on these four routes only, for
-  future browser/wallet/third-party clients reading public, payment-blind data. `/api/v1/*` is the
-  only public API surface — see "API versioning" below. All four are rate limited; three of them are
+  `app/api/v1/protocols/export`, `app/api/v1/coverage`, `app/api/v1/protocol/[id]`,
+  `app/api/v1/health`). The scored routes use the same `Store` latest-score semantics as the
+  original standalone API — a transport change, not a rewrite. The coverage route combines the
+  static coverage module with live leaderboard ids solely for deduplication. The health route
+  reports indexer freshness and nothing else — see "The health endpoint" below. CORS
+  (`access-control-allow-origin: *`) is set on these five routes only, for future
+  browser/wallet/third-party clients reading public, payment-blind data. `/api/v1/*` is the only
+  public API surface — see "API versioning" below. All five are rate limited; four of them are
   CDN-cached and health deliberately is not — see "Caching and rate limits" below.
 - **Indexer** → triggered by `POST /api/cron/run-indexer`, which calls `runIndexerCycle()` once.
   The route is secret-gated (`Authorization: Bearer <CRON_SECRET>`, compared with
@@ -668,12 +669,13 @@ asserted nowhere.
 
 The public API is versioned in the URL. The documented, canonical paths are:
 
-| Endpoint                   | Returns                                                |
-| -------------------------- | ------------------------------------------------------ |
-| `GET /api/v1/protocols`    | The leaderboard: every protocol + its latest score.    |
-| `GET /api/v1/coverage`     | Assessed protocols and markets Stenion does not score. |
-| `GET /api/v1/protocol/:id` | One protocol's detail, factors, and run history.       |
-| `GET /api/v1/health`       | Indexer freshness per protocol + one overall status.   |
+| Endpoint                       | Returns                                                |
+| ------------------------------ | ------------------------------------------------------ |
+| `GET /api/v1/protocols`        | The leaderboard: every protocol + its latest score.    |
+| `GET /api/v1/protocols/export` | Current scored registry snapshot as JSON or CSV.       |
+| `GET /api/v1/coverage`         | Assessed protocols and markets Stenion does not score. |
+| `GET /api/v1/protocol/:id`     | One protocol's detail, factors, and run history.       |
+| `GET /api/v1/health`           | Indexer freshness per protocol + one overall status.   |
 
 **The consumer-facing reference is [`api-docs/index.md`](../api-docs/index.md)**, rendered on the site at `/docs/api`. This
 section owns the _policy_; that document owns the contract as an integrator meets it — request and

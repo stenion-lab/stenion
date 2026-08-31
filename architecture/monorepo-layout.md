@@ -640,8 +640,9 @@ three things in one Vercel project:
    or a methodology-version change. None of the three is ever drawn through, and a failed run is
    never rendered as a zero.
 
-2. The public API, as Route Handlers: `GET /api/v1/protocols`, `GET /api/v1/coverage`,
-   `GET /api/v1/protocol/:id`, `GET /api/v1/health`.
+2. The public API, as Route Handlers: `GET /api/v1/protocols`,
+   `GET /api/v1/protocols/export`, `GET /api/v1/coverage`, `GET /api/v1/protocol/:id`,
+   `GET /api/v1/health`.
 3. A secret-gated cron-trigger route (`POST /api/cron/run-indexer`) that runs one indexer cycle.
 
 **`@stenion/api`** — a standalone `node:http` REST server. **Not deployed** — see below.

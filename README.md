@@ -105,8 +105,9 @@ pnpm --filter @stenion/dashboard dev             # http://localhost:3000
 
 The dashboard reads Postgres in-process, so once step 4 has landed at least one row you'll see
 real scores at `http://localhost:3000`. The public API is served by the dashboard at
-`/api/v1/protocols`, `/api/v1/coverage`, `/api/v1/protocol/:id`, and `/api/v1/health` — versioned,
-with the policy in [`architecture/deploy-architecture.md`](architecture/deploy-architecture.md#api-versioning).
+`/api/v1/protocols`, `/api/v1/protocols/export`, `/api/v1/coverage`, `/api/v1/protocol/:id`, and
+`/api/v1/health` — versioned, with the policy in
+[`architecture/deploy-architecture.md`](architecture/deploy-architecture.md#api-versioning).
 
 ### Using the public API
 

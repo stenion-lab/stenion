@@ -157,6 +157,31 @@ export interface LeaderboardEntry {
 }
 
 /**
+ * One currently scored registry row for export.
+ *
+ * This is deliberately the leaderboard's current-state shape plus the score
+ * payload the board omits (`factors` and `methodologyVersion`). It is still a
+ * snapshot of the latest **ok** score, not history, and it still carries
+ * `lastRunAt`/`lastRunStatus` from the latest run of any status so a stale score
+ * remains visible when a newer attempt failed.
+ */
+export interface CurrentRegistryExportEntry {
+  id: string;
+  name: string;
+  chain: string;
+  category: ProtocolCategory;
+  logo: string | null;
+  deployedOn: ProtocolDeployment | null;
+  safetyScore: number;
+  computedAt: string;
+  methodologyVersion: number;
+  factors: FactorMap;
+  operationalState: OperationalState | null;
+  lastRunAt: string | null;
+  lastRunStatus: 'ok' | 'failed' | null;
+}
+
+/**
  * One row of a protocol's recent score history (GET /api/v1/protocol/:id). A
  * discriminated union on `status` mirroring the persisted RunRecord: `ok` rows
  * carry the score, its factor breakdown and the timestamps; `failed` rows carry
@@ -316,6 +341,11 @@ export interface Store {
   insertRunRecord(record: RunRecord): Promise<void>;
   /** Every protocol with its latest-ok score, ranked by score desc (nulls last). */
   listProtocolsWithLatestScore(): Promise<LeaderboardEntry[]>;
+  /**
+   * Every currently scored protocol/market, one row per latest successful score.
+   * Never-scored protocols are excluded rather than exported with fake scores.
+   */
+  listCurrentScoredRegistryState(): Promise<CurrentRegistryExportEntry[]>;
   /** One protocol's detail + recent history, or null if the id is unknown. */
   getProtocolDetail(id: string): Promise<ProtocolDetail | null>;
   /**
@@ -521,6 +551,52 @@ export function toLeaderboardEntry(row: LeaderboardRow): LeaderboardEntry {
   };
 }
 
+/**
+ * A scored export row as pg returns it. It is the leaderboard row plus the
+ * latest-ok score payload, with non-null score fields because the query joins
+ * only protocols that have a successful run.
+ */
+export interface CurrentRegistryExportRow {
+  id: string;
+  name: string;
+  chain: string;
+  category: string;
+  logo: string | null;
+  deployment_host: string | null;
+  deployment_label: string | null;
+  safety_score: string;
+  computed_at: Date;
+  methodology_version: number;
+  factors: FactorMap;
+  operational_state: OperationalState | null;
+  last_run_at: Date | null;
+  last_run_status: 'ok' | 'failed' | null;
+}
+
+/** One export row -> one current scored registry entry. */
+export function toCurrentRegistryExportEntry(
+  row: CurrentRegistryExportRow,
+): CurrentRegistryExportEntry {
+  return {
+    id: row.id,
+    name: row.name,
+    chain: row.chain,
+    /* see toProtocolDetail on the cast */
+    category: row.category as ProtocolCategory,
+    logo: row.logo,
+    deployedOn: toDeployedOn(row.deployment_host, row.deployment_label),
+    // Non-null because the SQL joins an ok risk_scores row, whose shape CHECK
+    // requires these fields on the ok arm.
+    safetyScore: Number(row.safety_score),
+    computedAt: row.computed_at.toISOString(),
+    methodologyVersion: row.methodology_version,
+    factors: row.factors,
+    operationalState: row.operational_state,
+    lastRunAt: toIso(row.last_run_at),
+    lastRunStatus: row.last_run_status,
+  };
+}
+
 /** A `protocols` row joined with its run-freshness timestamps, as pg returns it. */
 export interface RunHealthRow {
   id: string;
@@ -686,6 +762,38 @@ export function createStore(pool: Pool): Store {
       );
 
       return rows.map(toLeaderboardEntry);
+    },
+
+    async listCurrentScoredRegistryState() {
+      // Same latest-successful-score + latest-run semantics as the leaderboard,
+      // but the ok side is an INNER LATERAL join because this export is a scored
+      // snapshot: a protocol with no successful run has no current score or
+      // factor map to export. This is one query, with no per-row detail fetches.
+      const { rows } = await pool.query<CurrentRegistryExportRow>(
+        `SELECT p.id, p.name, p.chain, p.category, p.logo,
+                p.deployment_host, p.deployment_label,
+                ok.safety_score, ok.computed_at, ok.methodology_version,
+                ok.factors, ok.operational_state,
+                latest.run_at AS last_run_at, latest.status AS last_run_status
+           FROM protocols p
+           JOIN LATERAL (
+             SELECT safety_score, computed_at, methodology_version, factors, operational_state
+               FROM risk_scores
+              WHERE protocol_id = p.id AND status = 'ok'
+              ORDER BY run_at DESC
+              LIMIT 1
+           ) ok ON true
+           LEFT JOIN LATERAL (
+             SELECT run_at, status
+               FROM risk_scores
+              WHERE protocol_id = p.id
+              ORDER BY run_at DESC
+              LIMIT 1
+           ) latest ON true
+          ORDER BY ok.safety_score DESC, p.id`,
+      );
+
+      return rows.map(toCurrentRegistryExportEntry);
     },
 
     async getProtocolDetail(id) {
