@@ -9,6 +9,8 @@ import {
   groupRankedByCategory,
   matchesQuery,
   parseRegistryParams,
+  registryExportHref,
+  registryExportLinks,
   partitionScored,
   registryHref,
   sortRanked,
@@ -270,6 +272,48 @@ describe('registryHref', () => {
     );
     assert.equal(parsed.category, 'all');
     assert.equal(registryHref(parsed), '/registry');
+  });
+});
+
+describe('registryExportLinks', () => {
+  it('targets the current-state export endpoint for CSV and JSON', () => {
+    assert.equal(registryExportHref('csv'), '/api/v1/protocols/export?format=csv');
+    assert.equal(registryExportHref('json'), '/api/v1/protocols/export?format=json');
+    assert.deepEqual(
+      registryExportLinks().map((link) => [link.label, link.href]),
+      [
+        ['CSV', '/api/v1/protocols/export?format=csv'],
+        ['JSON', '/api/v1/protocols/export?format=json'],
+      ],
+    );
+  });
+
+  it('does not encode the filtered or sorted registry view into export URLs', () => {
+    const filtered = registryHref({
+      q: 'blend',
+      status: 'scored',
+      category: 'lending',
+      sort: 'score-asc',
+    });
+    assert.equal(filtered, '/registry?q=blend&status=scored&category=lending&sort=score-asc');
+
+    for (const link of registryExportLinks()) {
+      const url = new URL(link.href, 'https://stenion.test');
+      assert.equal(url.pathname, '/api/v1/protocols/export');
+      assert.equal(url.searchParams.get('format'), link.format);
+      assert.equal(url.searchParams.has('q'), false);
+      assert.equal(url.searchParams.has('status'), false);
+      assert.equal(url.searchParams.has('category'), false);
+      assert.equal(url.searchParams.has('sort'), false);
+    }
+  });
+
+  it('provides ordinary labelled links, so keyboard access stays native', () => {
+    for (const link of registryExportLinks()) {
+      assert.match(link.ariaLabel, /^Download current registry snapshot as (CSV|JSON)$/);
+      assert.ok(link.href.startsWith('/api/v1/protocols/export?format='));
+      assert.equal(link.label.length > 0, true);
+    }
   });
 });
 
