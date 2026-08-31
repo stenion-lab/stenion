@@ -22,11 +22,12 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search, X } from 'lucide-react';
+import { Download, Loader2, Search, X } from 'lucide-react';
 
 import { cn } from '../app/lib/cn';
 import {
   REGISTRY_SORTS,
+  registryExportLinks,
   registryHref,
   type RegistryCategoryFilter,
   type RegistryParams,
@@ -120,6 +121,7 @@ export function RegistryControls({
       router.replace(registryHref({ ...params, q, ...next }), { scroll: false });
     });
   };
+  const exportLinks = registryExportLinks();
 
   return (
     <form
@@ -131,10 +133,10 @@ export function RegistryControls({
         e.preventDefault();
         go({ q });
       }}
-      className={cn('flex flex-col gap-3 sm:flex-row sm:items-center', className)}
+      className={cn('flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center', className)}
       role="search"
     >
-      <div className="relative flex-1">
+      <div className="relative flex-1 sm:min-w-64">
         {/* One slot, two icons: the magnifier idle, a spinner in flight. Same
             position and size, so nothing shifts as it swaps. */}
         {isPending ? (
@@ -180,7 +182,7 @@ export function RegistryControls({
         )}
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <Select
           id="registry-status"
           name="status"
@@ -234,6 +236,25 @@ export function RegistryControls({
             </option>
           ))}
         </Select>
+      </div>
+
+      <div
+        className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-1.5"
+        role="group"
+        aria-label="Export current registry snapshot"
+      >
+        <Download className="h-4 w-4 text-faint" aria-hidden="true" />
+        <span className="text-sm text-muted">Export</span>
+        {exportLinks.map((link) => (
+          <a
+            key={link.format}
+            href={link.href}
+            aria-label={link.ariaLabel}
+            className="rounded px-2 py-1 text-sm font-medium text-accent-ink transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {link.label}
+          </a>
+        ))}
       </div>
 
       {/* The no-JS submit. Hidden from pointer users once the enhancement is
