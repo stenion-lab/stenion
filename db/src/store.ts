@@ -623,6 +623,66 @@ export function toRunHealthEntry(row: RunHealthRow): RunHealthEntry {
   };
 }
 
+/**
+ * The staleness join: the newest run of ANY status, per protocol.
+ *
+ * Extracted because it is the same join in every query that reports
+ * `lastRunAt` / `lastRunStatus` — the leaderboard, the current-state export, the
+ * detail row and the health probe. It was previously written out four times, and
+ * four copies of the staleness model is four places to change when it moves and
+ * three places to forget. The whole point of the pair is that a stale score
+ * stays visible while a newer failure is reported beside it; a copy that drifts
+ * doesn't announce itself, it just quietly reports a different freshness than
+ * the route next to it.
+ *
+ * LEFT, always: a protocol with no runs at all still has to come back, with null
+ * timestamps meaning "never run". An inner join here would silently drop a
+ * newly-registered protocol from the board.
+ *
+ * Assumes the enclosing query aliases `protocols` as `p`, and exposes the join
+ * as `latest`.
+ */
+const LATEST_RUN_LATERAL = `LEFT JOIN LATERAL (
+             SELECT run_at, status
+               FROM risk_scores
+              WHERE protocol_id = p.id
+              ORDER BY run_at DESC
+              LIMIT 1
+           ) latest ON true`;
+
+/**
+ * The current-score join: the newest SUCCESSFUL run, per protocol.
+ *
+ * The other half of the pair above, and extracted for the same reason — the
+ * `status = 'ok' ORDER BY run_at DESC LIMIT 1` predicate is what "current score"
+ * MEANS here, and it was written out four times. What legitimately varies per
+ * caller is only which columns that row is asked for, so that is the parameter;
+ * the predicate is not.
+ *
+ * `join` is the one other axis, and it is `'JOIN'` in exactly one place. The
+ * export is a scored snapshot, so a protocol with no successful run has no
+ * current score to export and is excluded by the join itself rather than
+ * filtered out afterwards. Everywhere else the join is LEFT, because a
+ * never-scored protocol is a row the caller still needs — as `safetyScore: null`
+ * on the board, or as a 200 with an empty history on the detail route.
+ *
+ * `projection` is a SQL fragment, never caller input: every call site below
+ * passes a hardcoded column list. Assumes `protocols` is aliased `p`, and
+ * exposes the join as `ok`.
+ */
+function latestOkScoreLateral(
+  projection: string,
+  join: 'LEFT JOIN' | 'JOIN' = 'LEFT JOIN',
+): string {
+  return `${join} LATERAL (
+             SELECT ${projection}
+               FROM risk_scores
+              WHERE protocol_id = p.id AND status = 'ok'
+              ORDER BY run_at DESC
+              LIMIT 1
+           ) ok ON true`;
+}
+
 export function createStore(pool: Pool): Store {
   return {
     async upsertProtocol(metadata) {
@@ -744,20 +804,8 @@ export function createStore(pool: Pool): Store {
                 ok.safety_score, ok.computed_at, ok.operational_state,
                 latest.run_at AS last_run_at, latest.status AS last_run_status
            FROM protocols p
-           LEFT JOIN LATERAL (
-             SELECT safety_score, computed_at, operational_state
-               FROM risk_scores
-              WHERE protocol_id = p.id AND status = 'ok'
-              ORDER BY run_at DESC
-              LIMIT 1
-           ) ok ON true
-           LEFT JOIN LATERAL (
-             SELECT run_at, status
-               FROM risk_scores
-              WHERE protocol_id = p.id
-              ORDER BY run_at DESC
-              LIMIT 1
-           ) latest ON true
+           ${latestOkScoreLateral('safety_score, computed_at, operational_state')}
+           ${LATEST_RUN_LATERAL}
           ORDER BY ok.safety_score DESC NULLS LAST, p.id`,
       );
 
@@ -776,20 +824,11 @@ export function createStore(pool: Pool): Store {
                 ok.factors, ok.operational_state,
                 latest.run_at AS last_run_at, latest.status AS last_run_status
            FROM protocols p
-           JOIN LATERAL (
-             SELECT safety_score, computed_at, methodology_version, factors, operational_state
-               FROM risk_scores
-              WHERE protocol_id = p.id AND status = 'ok'
-              ORDER BY run_at DESC
-              LIMIT 1
-           ) ok ON true
-           LEFT JOIN LATERAL (
-             SELECT run_at, status
-               FROM risk_scores
-              WHERE protocol_id = p.id
-              ORDER BY run_at DESC
-              LIMIT 1
-           ) latest ON true
+           ${latestOkScoreLateral(
+             'safety_score, computed_at, methodology_version, factors, operational_state',
+             'JOIN',
+           )}
+           ${LATEST_RUN_LATERAL}
           ORDER BY ok.safety_score DESC, p.id`,
       );
 
@@ -807,20 +846,10 @@ export function createStore(pool: Pool): Store {
                 ok.methodology_version,
                 latest.run_at AS last_run_at, latest.status AS last_run_status
            FROM protocols p
-           LEFT JOIN LATERAL (
-             SELECT safety_score, computed_at, factors, operational_state, methodology_version
-               FROM risk_scores
-              WHERE protocol_id = p.id AND status = 'ok'
-              ORDER BY run_at DESC
-              LIMIT 1
-           ) ok ON true
-           LEFT JOIN LATERAL (
-             SELECT run_at, status
-               FROM risk_scores
-              WHERE protocol_id = p.id
-              ORDER BY run_at DESC
-              LIMIT 1
-           ) latest ON true
+           ${latestOkScoreLateral(
+             'safety_score, computed_at, factors, operational_state, methodology_version',
+           )}
+           ${LATEST_RUN_LATERAL}
           WHERE p.id = $1`,
         [id],
       );
@@ -888,20 +917,8 @@ export function createStore(pool: Pool): Store {
                 ok.run_at AS last_successful_run_at,
                 latest.run_at AS last_run_at, latest.status AS last_run_status
            FROM protocols p
-           LEFT JOIN LATERAL (
-             SELECT run_at
-               FROM risk_scores
-              WHERE protocol_id = p.id AND status = 'ok'
-              ORDER BY run_at DESC
-              LIMIT 1
-           ) ok ON true
-           LEFT JOIN LATERAL (
-             SELECT run_at, status
-               FROM risk_scores
-              WHERE protocol_id = p.id
-              ORDER BY run_at DESC
-              LIMIT 1
-           ) latest ON true
+           ${latestOkScoreLateral('run_at')}
+           ${LATEST_RUN_LATERAL}
           ORDER BY p.id`,
       );
 
