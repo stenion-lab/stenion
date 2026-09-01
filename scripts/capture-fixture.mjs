@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global console, process, URL */
+/* global console, process */
 //
 // Capture a live mainnet snapshot of an adapter's raw on-chain state, for use as
 // a frozen regression fixture (adapters/fixtures/**/*.ts).
